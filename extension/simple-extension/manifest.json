@@ -1,0 +1,37 @@
+{
+  "manifest_version": 3,
+  "name": "TikTok Streamer Helper",
+  "version": "1.0.0",
+  "description": "Automate luxury resale livestreaming with real-time product detection",
+  "permissions": [
+    "activeTab",
+    "storage"
+  ],
+  "host_permissions": [
+    "https://*.tiktok.com/*",
+    "https://seller.tiktok.com/*",
+    "https://studio.tiktok.com/*",
+    "http://localhost:8000/*"
+  ],
+  "content_scripts": [
+    {
+      "matches": [
+        "https://*.tiktok.com/*",
+        "https://seller.tiktok.com/*", 
+        "https://studio.tiktok.com/*"
+      ],
+      "js": [
+        "content-script.js"
+      ],
+      "run_at": "document_end"
+    }
+  ],
+  "background": {
+    "service_worker": "background.js",
+    "type": "module"
+  },
+  "action": {
+    "default_popup": "popup.html",
+    "default_title": "TikTok Streamer Helper"
+  }
+} 

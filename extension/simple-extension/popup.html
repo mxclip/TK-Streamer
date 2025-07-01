@@ -1,0 +1,178 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <title>TikTok Streamer Helper</title>
+  <style>
+    body {
+      width: 350px;
+      min-height: 400px;
+      margin: 0;
+      padding: 16px;
+      font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+      background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+      color: white;
+    }
+
+    .header {
+      text-align: center;
+      margin-bottom: 20px;
+    }
+
+    .title {
+      font-size: 18px;
+      font-weight: bold;
+      margin-bottom: 8px;
+    }
+
+    .subtitle {
+      font-size: 12px;
+      opacity: 0.8;
+    }
+
+    .status-section {
+      background: rgba(255, 255, 255, 0.1);
+      border-radius: 8px;
+      padding: 16px;
+      margin-bottom: 16px;
+    }
+
+    .status-item {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      margin-bottom: 8px;
+    }
+
+    .status-item:last-child {
+      margin-bottom: 0;
+    }
+
+    .status-label {
+      font-size: 14px;
+      font-weight: 500;
+    }
+
+    .status-value {
+      font-size: 12px;
+      padding: 4px 8px;
+      border-radius: 12px;
+      background: rgba(255, 255, 255, 0.2);
+    }
+
+    .status-connected { background: #4CAF50; }
+    .status-error { background: #F44336; }
+    .status-offline { background: #FF9800; }
+
+    .product-section {
+      background: rgba(255, 255, 255, 0.1);
+      border-radius: 8px;
+      padding: 16px;
+      margin-bottom: 16px;
+    }
+
+    .product-title {
+      font-size: 14px;
+      font-weight: 500;
+      margin-bottom: 8px;
+    }
+
+    .product-value {
+      font-size: 12px;
+      background: rgba(0, 0, 0, 0.2);
+      padding: 8px;
+      border-radius: 4px;
+      word-wrap: break-word;
+      min-height: 20px;
+    }
+
+    .match-section {
+      background: rgba(255, 255, 255, 0.1);
+      border-radius: 8px;
+      padding: 16px;
+      margin-bottom: 16px;
+    }
+
+    .actions {
+      display: flex;
+      flex-direction: column;
+      gap: 8px;
+    }
+
+    .btn {
+      background: rgba(255, 255, 255, 0.2);
+      border: none;
+      color: white;
+      padding: 12px 16px;
+      border-radius: 6px;
+      cursor: pointer;
+      font-size: 14px;
+      transition: background 0.3s ease;
+    }
+
+    .btn:hover {
+      background: rgba(255, 255, 255, 0.3);
+    }
+
+    .btn:disabled {
+      opacity: 0.5;
+      cursor: not-allowed;
+    }
+
+    .footer {
+      text-align: center;
+      font-size: 10px;
+      opacity: 0.6;
+      margin-top: 16px;
+    }
+
+    .loading {
+      opacity: 0.6;
+    }
+  </style>
+</head>
+<body>
+  <div class="header">
+    <div class="title">🎯 TikTok Streamer Helper</div>
+    <div class="subtitle">Luxury Resale Automation</div>
+  </div>
+
+  <div class="status-section">
+    <div class="status-item">
+      <span class="status-label">API Status</span>
+      <span id="api-status" class="status-value">Checking...</span>
+    </div>
+    <div class="status-item">
+      <span class="status-label">Extension</span>
+      <span id="extension-status" class="status-value status-connected">Active</span>
+    </div>
+    <div class="status-item">
+      <span class="status-label">Last Activity</span>
+      <span id="last-activity" class="status-value">Never</span>
+    </div>
+  </div>
+
+  <div class="product-section">
+    <div class="product-title">Current Product</div>
+    <div id="current-product" class="product-value">No product detected</div>
+  </div>
+
+  <div class="match-section">
+    <div class="product-title">Last Match Result</div>
+    <div id="match-result" class="product-value">No matches yet</div>
+  </div>
+
+  <div class="actions">
+    <button id="refresh-btn" class="btn">🔄 Refresh Status</button>
+    <button id="force-check-btn" class="btn">🔍 Force Check Product</button>
+    <button id="toggle-debug-btn" class="btn">🐛 Toggle Debug Mode</button>
+    <button id="open-backend-btn" class="btn">⚙️ Open Backend Dashboard</button>
+  </div>
+
+  <div class="footer">
+    <div>Version 1.0.0 • Made for TikTok Streamers</div>
+  </div>
+
+  <script src="popup.js"></script>
+</body>
+</html> 

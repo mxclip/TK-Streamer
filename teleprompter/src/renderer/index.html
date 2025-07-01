@@ -1,0 +1,382 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>TikTok Teleprompter</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background: #ffffff;
+            color: #333;
+            height: 100vh;
+            overflow: hidden;
+            transition: all 0.3s ease;
+        }
+
+        body.overlay-mode {
+            background: rgba(0, 0, 0, 0.8);
+            color: #ffffff;
+        }
+
+        body.overlay-mode .container {
+            background: rgba(0, 0, 0, 0.9);
+            border: 2px solid rgba(255, 255, 255, 0.3);
+        }
+
+        .container {
+            height: 100vh;
+            display: flex;
+            flex-direction: column;
+            padding: 20px;
+            background: #ffffff;
+            transition: all 0.3s ease;
+        }
+
+        .header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 20px;
+            padding-bottom: 10px;
+            border-bottom: 2px solid #e0e0e0;
+        }
+
+        body.overlay-mode .header {
+            border-bottom-color: rgba(255, 255, 255, 0.3);
+        }
+
+        .title {
+            font-size: 18px;
+            font-weight: bold;
+            color: #1976d2;
+        }
+
+        body.overlay-mode .title {
+            color: #4fc3f7;
+        }
+
+        .status {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+        }
+
+        .status-indicator {
+            width: 12px;
+            height: 12px;
+            border-radius: 50%;
+            background: #f44336;
+            transition: background 0.3s ease;
+        }
+
+        .status-indicator.connected {
+            background: #4caf50;
+        }
+
+        .bag-info {
+            background: #f5f5f5;
+            padding: 15px;
+            border-radius: 8px;
+            margin-bottom: 20px;
+            border-left: 4px solid #1976d2;
+        }
+
+        body.overlay-mode .bag-info {
+            background: rgba(255, 255, 255, 0.1);
+            border-left-color: #4fc3f7;
+        }
+
+        .bag-title {
+            font-weight: bold;
+            font-size: 16px;
+            margin-bottom: 5px;
+        }
+
+        .bag-details {
+            font-size: 14px;
+            color: #666;
+        }
+
+        body.overlay-mode .bag-details {
+            color: #bbb;
+        }
+
+        .script-container {
+            flex: 1;
+            display: flex;
+            flex-direction: column;
+            justify-content: center;
+            position: relative;
+        }
+
+        .script-block {
+            background: #ffffff;
+            border: 2px solid #e0e0e0;
+            border-radius: 12px;
+            padding: 25px;
+            margin: 10px 0;
+            text-align: center;
+            font-size: 18px;
+            line-height: 1.6;
+            box-shadow: 0 4px 8px rgba(0,0,0,0.1);
+            transition: all 0.3s ease;
+            display: none;
+        }
+
+        body.overlay-mode .script-block {
+            background: rgba(0, 0, 0, 0.8);
+            border-color: rgba(255, 255, 255, 0.3);
+            box-shadow: 0 4px 12px rgba(0,0,0,0.5);
+        }
+
+        .script-block.active {
+            display: block;
+            transform: scale(1.02);
+            border-color: #1976d2;
+        }
+
+        body.overlay-mode .script-block.active {
+            border-color: #4fc3f7;
+        }
+
+        .script-type {
+            display: inline-block;
+            background: #1976d2;
+            color: white;
+            padding: 6px 12px;
+            border-radius: 20px;
+            font-size: 12px;
+            font-weight: bold;
+            text-transform: uppercase;
+            margin-bottom: 15px;
+        }
+
+        body.overlay-mode .script-type {
+            background: #4fc3f7;
+            color: #000;
+        }
+
+        .script-content {
+            font-size: 20px;
+            line-height: 1.8;
+            font-weight: 500;
+        }
+
+        .navigation {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-top: 20px;
+            padding: 15px;
+            background: #f5f5f5;
+            border-radius: 8px;
+        }
+
+        body.overlay-mode .navigation {
+            background: rgba(255, 255, 255, 0.1);
+        }
+
+        .nav-info {
+            font-size: 14px;
+            color: #666;
+        }
+
+        body.overlay-mode .nav-info {
+            color: #bbb;
+        }
+
+        .controls {
+            display: flex;
+            gap: 10px;
+        }
+
+        .control-btn {
+            background: #1976d2;
+            color: white;
+            border: none;
+            padding: 8px 12px;
+            border-radius: 4px;
+            cursor: pointer;
+            font-size: 12px;
+            transition: background 0.3s ease;
+        }
+
+        .control-btn:hover {
+            background: #1565c0;
+        }
+
+        body.overlay-mode .control-btn {
+            background: #4fc3f7;
+            color: #000;
+        }
+
+        .missing-banner {
+            background: #ff9800;
+            color: white;
+            padding: 15px;
+            text-align: center;
+            font-weight: bold;
+            margin-bottom: 20px;
+            border-radius: 8px;
+            display: none;
+            animation: pulse 2s infinite;
+        }
+
+        .missing-banner.show {
+            display: block;
+        }
+
+        @keyframes pulse {
+            0% { opacity: 1; }
+            50% { opacity: 0.7; }
+            100% { opacity: 1; }
+        }
+
+        .auto-scroll {
+            animation: scroll 30s linear infinite;
+        }
+
+        @keyframes scroll {
+            0% { transform: translateY(0); }
+            100% { transform: translateY(-100%); }
+        }
+
+        .hotkeys-help {
+            position: fixed;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            background: white;
+            padding: 30px;
+            border-radius: 12px;
+            box-shadow: 0 8px 24px rgba(0,0,0,0.3);
+            z-index: 1000;
+            display: none;
+            max-width: 400px;
+            width: 90%;
+        }
+
+        body.overlay-mode .hotkeys-help {
+            background: rgba(0, 0, 0, 0.9);
+            color: white;
+        }
+
+        .hotkeys-help.show {
+            display: block;
+        }
+
+        .help-title {
+            font-size: 20px;
+            font-weight: bold;
+            margin-bottom: 20px;
+            text-align: center;
+        }
+
+        .hotkey-item {
+            display: flex;
+            justify-content: space-between;
+            margin-bottom: 10px;
+            padding: 8px 0;
+            border-bottom: 1px solid #eee;
+        }
+
+        body.overlay-mode .hotkey-item {
+            border-bottom-color: #444;
+        }
+
+        .hotkey-key {
+            font-family: monospace;
+            background: #f0f0f0;
+            padding: 4px 8px;
+            border-radius: 4px;
+            font-size: 12px;
+        }
+
+        body.overlay-mode .hotkey-key {
+            background: #333;
+            color: #fff;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="header">
+            <div class="title">TikTok Teleprompter</div>
+            <div class="status">
+                <div class="status-indicator" id="connectionStatus"></div>
+                <span id="statusText">Disconnected</span>
+            </div>
+        </div>
+
+        <div class="missing-banner" id="missingBanner">
+            ⚠️ SCRIPT MISSING - Product not found in database
+        </div>
+
+        <div class="bag-info" id="bagInfo" style="display: none;">
+            <div class="bag-title" id="bagTitle">No product selected</div>
+            <div class="bag-details" id="bagDetails">Connect to backend to load scripts</div>
+        </div>
+
+        <div class="script-container" id="scriptContainer">
+            <div class="script-block active" id="defaultBlock">
+                <div class="script-type">Ready</div>
+                <div class="script-content">
+                    Waiting for scripts from backend...<br><br>
+                    <strong>Hotkeys:</strong><br>
+                    Space - Next block<br>
+                    Ctrl+← / Ctrl+→ - Switch scripts<br>
+                    Ctrl+Alt+R - Auto-scroll<br>
+                    F11 - Overlay mode
+                </div>
+            </div>
+        </div>
+
+        <div class="navigation">
+            <div class="nav-info">
+                <span id="blockInfo">Block: - | Script: - of -</span>
+            </div>
+            <div class="controls">
+                <button class="control-btn" onclick="toggleAutoScroll()">Auto-Scroll</button>
+                <button class="control-btn" onclick="showHelp()">Help</button>
+                <button class="control-btn" onclick="toggleOverlay()">Overlay</button>
+            </div>
+        </div>
+    </div>
+
+    <div class="hotkeys-help" id="hotkeysHelp">
+        <div class="help-title">Hotkeys Reference</div>
+        <div class="hotkey-item">
+            <span>Next script block</span>
+            <span class="hotkey-key">Space</span>
+        </div>
+        <div class="hotkey-item">
+            <span>Next script variation</span>
+            <span class="hotkey-key">Ctrl + →</span>
+        </div>
+        <div class="hotkey-item">
+            <span>Previous script variation</span>
+            <span class="hotkey-key">Ctrl + ←</span>
+        </div>
+        <div class="hotkey-item">
+            <span>Toggle auto-scroll</span>
+            <span class="hotkey-key">Ctrl + Alt + R</span>
+        </div>
+        <div class="hotkey-item">
+            <span>Toggle overlay mode</span>
+            <span class="hotkey-key">F11</span>
+        </div>
+        <div style="text-align: center; margin-top: 20px;">
+            <button class="control-btn" onclick="hideHelp()">Close</button>
+        </div>
+    </div>
+
+    <script src="renderer.js"></script>
+</body>
+</html> 

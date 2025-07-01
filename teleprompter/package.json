@@ -1,0 +1,53 @@
+{
+  "name": "tiktok-teleprompter",
+  "version": "1.0.0",
+  "description": "TikTok Luxury Resale Livestream Teleprompter",
+  "main": "src/main.js",
+  "scripts": {
+    "electron:dev": "electron .",
+    "electron:pack": "electron-builder",
+    "electron:dist": "electron-builder --publish=never",
+    "electron:build": "npm run build && electron-builder",
+    "build": "echo 'Build complete'",
+    "start": "electron .",
+    "dev": "npm run electron:dev"
+  },
+  "keywords": [
+    "electron",
+    "teleprompter",
+    "tiktok",
+    "livestream"
+  ],
+  "author": "TikTok Streamer Team",
+  "license": "MIT",
+  "devDependencies": {
+    "electron": "^27.0.0",
+    "electron-builder": "^24.6.4"
+  },
+  "dependencies": {
+    "ws": "^8.14.2",
+    "electron-store": "^8.1.0"
+  },
+  "build": {
+    "appId": "com.tiktokstreamer.teleprompter",
+    "productName": "TikTok Teleprompter",
+    "directories": {
+      "output": "dist"
+    },
+    "files": [
+      "src/**/*",
+      "assets/**/*",
+      "node_modules/**/*",
+      "package.json"
+    ],
+    "mac": {
+      "category": "public.app-category.productivity"
+    },
+    "win": {
+      "target": "nsis"
+    },
+    "linux": {
+      "target": "AppImage"
+    }
+  }
+} 
