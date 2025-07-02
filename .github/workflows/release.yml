@@ -12,13 +12,10 @@ env:
   IMAGE_NAME: ${{ github.repository }}
 
 jobs:
-  # Create GitHub Release
-  create-release:
-    name: 📦 Create Release
+  # Build and Package Frontend
+  build-frontend:
+    name: 🏗️ Build Frontend
     runs-on: ubuntu-latest
-    outputs:
-      upload_url: ${{ steps.create_release.outputs.upload_url }}
-      tag_name: ${{ steps.get_tag.outputs.tag_name }}
 
     steps:
     - name: 📥 Checkout code
@@ -28,44 +25,7 @@ jobs:
       id: get_tag
       run: echo "tag_name=${GITHUB_REF#refs/tags/}" >> $GITHUB_OUTPUT
 
-    - name: 📝 Generate changelog
-      id: changelog
-      run: |
-        # Generate basic changelog from commits
-        echo "## What's Changed" > CHANGELOG.md
-        echo "" >> CHANGELOG.md
-        git log --pretty=format:"- %s (%h)" $(git describe --tags --abbrev=0 HEAD^)..HEAD >> CHANGELOG.md || echo "- Initial release" >> CHANGELOG.md
-        echo "" >> CHANGELOG.md
-        echo "## Components" >> CHANGELOG.md
-        echo "- 🐍 **Backend**: FastAPI with SQLite/PostgreSQL support" >> CHANGELOG.md
-        echo "- ⚛️ **Frontend**: React admin dashboard" >> CHANGELOG.md
-        echo "- 🧩 **Extension**: Chrome MV3 extension for TikTok" >> CHANGELOG.md
-        echo "- 📺 **Teleprompter**: Electron desktop app" >> CHANGELOG.md
-        echo "- 🐳 **Docker**: Production-ready containers" >> CHANGELOG.md
-
-    - name: 🎉 Create Release
-      id: create_release
-      uses: actions/create-release@v1
-      env:
-        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-      with:
-        tag_name: ${{ steps.get_tag.outputs.tag_name }}
-        release_name: TikTok Streamer Helper ${{ steps.get_tag.outputs.tag_name }}
-        body_path: CHANGELOG.md
-        draft: false
-        prerelease: ${{ contains(steps.get_tag.outputs.tag_name, '-') }}
-
-  # Build and Package Frontend
-  build-frontend:
-    name: 🏗️ Build Frontend
-    runs-on: ubuntu-latest
-    needs: create-release
-
-    steps:
-    - name: 📥 Checkout code
-      uses: actions/checkout@v4
-
-    - name: 🟢 Set up Node.js
+    - name:  Set up Node.js
       uses: actions/setup-node@v4
       with:
         node-version: ${{ env.NODE_VERSION }}
@@ -79,46 +39,44 @@ jobs:
     - name: 🏗️ Build for production
       working-directory: ./frontend
       env:
-        REACT_APP_VERSION: ${{ needs.create-release.outputs.tag_name }}
+        REACT_APP_VERSION: ${{ steps.get_tag.outputs.tag_name }}
         REACT_APP_API_URL: /api/v1
       run: npm run build
 
     - name: 📄 Create build info
       working-directory: ./frontend/build
       run: |
-        # Create build info using Heredoc to avoid YAML syntax conflicts
-        cat << 'EOF' > build-info.json
-{
-"version": "${{ needs.create-release.outputs.tag_name }}",
-"buildTime": "$(date -u +%Y-%m-%dT%H:%M:%SZ)",
-"commit": "${{ github.sha }}"
-}
-EOF
+        cat > build-info.json << 'EOF'
+        {
+          "version": "${{ steps.get_tag.outputs.tag_name }}",
+          "buildTime": "$(date -u +%Y-%m-%dT%H:%M:%SZ)",
+          "commit": "${{ github.sha }}"
+        }
+        EOF
 
     - name: 📦 Create frontend archive
       run: |
         cd frontend/build
-        tar -czf ../../tiktok-streamer-frontend-${{ needs.create-release.outputs.tag_name }}.tar.gz .
+        tar -czf ../../tiktok-streamer-frontend-${{ steps.get_tag.outputs.tag_name }}.tar.gz .
 
-    - name: 📤 Upload frontend release asset
-      uses: actions/upload-release-asset@v1
-      env:
-        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+    - name: 📤 Upload frontend artifacts
+      uses: actions/upload-artifact@v4
       with:
-        upload_url: ${{ needs.create-release.outputs.upload_url }}
-        asset_path: ./tiktok-streamer-frontend-${{ needs.create-release.outputs.tag_name }}.tar.gz
-        asset_name: tiktok-streamer-frontend-${{ needs.create-release.outputs.tag_name }}.tar.gz
-        asset_content_type: application/gzip
+        name: frontend-build
+        path: ./tiktok-streamer-frontend-${{ steps.get_tag.outputs.tag_name }}.tar.gz
 
   # Build and Package Chrome Extension
   build-extension:
     name: 🧩 Build Extension
     runs-on: ubuntu-latest
-    needs: create-release
 
     steps:
     - name: 📥 Checkout code
       uses: actions/checkout@v4
+
+    - name: 🏷️ Get tag name
+      id: get_tag
+      run: echo "tag_name=${GITHUB_REF#refs/tags/}" >> $GITHUB_OUTPUT
 
     - name: 🟢 Set up Node.js
       uses: actions/setup-node@v4
@@ -129,7 +87,7 @@ EOF
       working-directory: ./extension/simple-extension
       run: |
         # Update manifest version
-        VERSION=${{ needs.create-release.outputs.tag_name }}
+        VERSION=${{ steps.get_tag.outputs.tag_name }}
         VERSION=${VERSION#v}  # Remove 'v' prefix
 
         # Update manifest.json
@@ -141,17 +99,14 @@ EOF
     - name: 📄 Add build info
       working-directory: ./extension/simple-extension
       run: |
-        # Create build info using Heredoc to avoid YAML syntax conflicts
-        cat << 'EOF' > build-info.js
-// Build Information
-const BUILD_INFO = {
-  version: '${{ needs.create-release.outputs.tag_name }}',
-  buildTime: '$(date -u +%Y-%m-%dT%H:%M:%SZ)',
-  commit: '${{ github.sha }}'
-};
-
-// Original background script follows
-EOF
+        cat > build-info.js << 'EOF'
+        // Build Information
+        const BUILD_INFO = {
+          version: '${{ steps.get_tag.outputs.tag_name }}',
+          buildTime: '$(date -u +%Y-%m-%dT%H:%M:%SZ)',
+          commit: '${{ github.sha }}'
+        };
+        EOF
 
         # Combine build info with original background script
         cat build-info.js background.js > background-with-info.js
@@ -161,17 +116,13 @@ EOF
     - name: 📦 Create extension package
       run: |
         cd extension/simple-extension
-        zip -r ../../tiktok-streamer-extension-${{ needs.create-release.outputs.tag_name }}.zip .
+        zip -r ../../tiktok-streamer-extension-${{ steps.get_tag.outputs.tag_name }}.zip .
 
-    - name: 📤 Upload extension release asset
-      uses: actions/upload-release-asset@v1
-      env:
-        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+    - name: 📤 Upload extension artifacts
+      uses: actions/upload-artifact@v4
       with:
-        upload_url: ${{ needs.create-release.outputs.upload_url }}
-        asset_path: ./tiktok-streamer-extension-${{ needs.create-release.outputs.tag_name }}.zip
-        asset_name: tiktok-streamer-extension-${{ needs.create-release.outputs.tag_name }}.zip
-        asset_content_type: application/zip
+        name: extension-build
+        path: ./tiktok-streamer-extension-${{ steps.get_tag.outputs.tag_name }}.zip
 
   # Build Teleprompter for Multiple Platforms
   build-teleprompter:
@@ -191,11 +142,14 @@ EOF
             ext: .dmg
 
     runs-on: ${{ matrix.os }}
-    needs: create-release
 
     steps:
     - name: 📥 Checkout code
       uses: actions/checkout@v4
+
+    - name: 🏷️ Get tag name
+      id: get_tag
+      run: echo "tag_name=${GITHUB_REF#refs/tags/}" >> $GITHUB_OUTPUT
 
     - name: 🟢 Set up Node.js
       uses: actions/setup-node@v4
@@ -211,7 +165,7 @@ EOF
     - name: 🔧 Update version
       working-directory: ./teleprompter
       run: |
-        VERSION=${{ needs.create-release.outputs.tag_name }}
+        VERSION=${{ steps.get_tag.outputs.tag_name }}
         VERSION=${VERSION#v}  # Remove 'v' prefix
         npm version $VERSION --no-git-tag-version
 
@@ -229,29 +183,24 @@ EOF
           find dist -name "*${{ matrix.ext }}" -o -name "*.tar.gz" -o -name "*.zip" | head -1 > artifact_path.txt
           if [ -s artifact_path.txt ]; then
             ARTIFACT_PATH=$(cat artifact_path.txt)
-            ARTIFACT_NAME="tiktok-streamer-teleprompter-${{ matrix.platform }}-${{ needs.create-release.outputs.tag_name }}${{ matrix.ext }}"
+            ARTIFACT_NAME="tiktok-streamer-teleprompter-${{ matrix.platform }}-${{ steps.get_tag.outputs.tag_name }}${{ matrix.ext }}"
             echo "Found artifact: $ARTIFACT_PATH"
             echo "ARTIFACT_PATH=$ARTIFACT_PATH" >> $GITHUB_ENV
             echo "ARTIFACT_NAME=$ARTIFACT_NAME" >> $GITHUB_ENV
           fi
         fi
 
-    - name: 📤 Upload teleprompter release asset
+    - name: 📤 Upload teleprompter artifacts
       if: env.ARTIFACT_PATH != ''
-      uses: actions/upload-release-asset@v1
-      env:
-        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      uses: actions/upload-artifact@v4
       with:
-        upload_url: ${{ needs.create-release.outputs.upload_url }}
-        asset_path: ./teleprompter/${{ env.ARTIFACT_PATH }}
-        asset_name: ${{ env.ARTIFACT_NAME }}
-        asset_content_type: application/octet-stream
+        name: teleprompter-${{ matrix.platform }}
+        path: ./teleprompter/${{ env.ARTIFACT_PATH }}
 
   # Build and Push Docker Images
   build-docker:
     name: 🐳 Build Docker
     runs-on: ubuntu-latest
-    needs: create-release
     permissions:
       contents: read
       packages: write
@@ -259,6 +208,10 @@ EOF
     steps:
     - name: 📥 Checkout code
       uses: actions/checkout@v4
+
+    - name: 🏷️ Get tag name
+      id: get_tag
+      run: echo "tag_name=${GITHUB_REF#refs/tags/}" >> $GITHUB_OUTPUT
 
     - name: 🐳 Set up Docker Buildx
       uses: docker/setup-buildx-action@v3
@@ -314,37 +267,92 @@ EOF
   create-source-archive:
     name: 📄 Create Source Archive
     runs-on: ubuntu-latest
-    needs: create-release
 
     steps:
     - name: 📥 Checkout code
       uses: actions/checkout@v4
 
+    - name: 🏷️ Get tag name
+      id: get_tag
+      run: echo "tag_name=${GITHUB_REF#refs/tags/}" >> $GITHUB_OUTPUT
+
     - name: 📦 Create source archive
       run: |
-        git archive --format=tar.gz --prefix=tiktok-streamer-${{ needs.create-release.outputs.tag_name }}/ HEAD > tiktok-streamer-source-${{ needs.create-release.outputs.tag_name }}.tar.gz
+        git archive --format=tar.gz --prefix=tiktok-streamer-${{ steps.get_tag.outputs.tag_name }}/ HEAD > tiktok-streamer-source-${{ steps.get_tag.outputs.tag_name }}.tar.gz
 
-    - name: 📤 Upload source archive
-      uses: actions/upload-release-asset@v1
-      env:
-        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+    - name: 📤 Upload source artifacts
+      uses: actions/upload-artifact@v4
       with:
-        upload_url: ${{ needs.create-release.outputs.upload_url }}
-        asset_path: ./tiktok-streamer-source-${{ needs.create-release.outputs.tag_name }}.tar.gz
-        asset_name: tiktok-streamer-source-${{ needs.create-release.outputs.tag_name }}.tar.gz
-        asset_content_type: application/gzip
+        name: source-archive
+        path: ./tiktok-streamer-source-${{ steps.get_tag.outputs.tag_name }}.tar.gz
+
+  # Create GitHub Release with all artifacts
+  create-release:
+    name: 🎉 Create Release
+    runs-on: ubuntu-latest
+    needs: [build-frontend, build-extension, build-teleprompter, build-docker, create-source-archive]
+    if: always() && !cancelled()
+
+    steps:
+    - name: 📥 Checkout code
+      uses: actions/checkout@v4
+
+    - name: 🏷️ Get tag name
+      id: get_tag
+      run: echo "tag_name=${GITHUB_REF#refs/tags/}" >> $GITHUB_OUTPUT
+
+    - name: 📝 Generate changelog
+      run: |
+        # Generate basic changelog from commits
+        echo "## What's Changed" > CHANGELOG.md
+        echo "" >> CHANGELOG.md
+        git log --pretty=format:"- %s (%h)" $(git describe --tags --abbrev=0 HEAD^)..HEAD >> CHANGELOG.md || echo "- Initial release" >> CHANGELOG.md
+        echo "" >> CHANGELOG.md
+        echo "## Components" >> CHANGELOG.md
+        echo "- 🐍 **Backend**: FastAPI with SQLite/PostgreSQL support" >> CHANGELOG.md
+        echo "- ⚛️ **Frontend**: React admin dashboard" >> CHANGELOG.md
+        echo "- 🧩 **Extension**: Chrome MV3 extension for TikTok" >> CHANGELOG.md
+        echo "- 📺 **Teleprompter**: Electron desktop app" >> CHANGELOG.md
+        echo "- 🐳 **Docker**: Production-ready containers" >> CHANGELOG.md
+
+    - name: 📥 Download all artifacts
+      uses: actions/download-artifact@v4
+      with:
+        merge-multiple: true
+
+    - name: 📋 List available files
+      run: |
+        echo "Available files for release:"
+        ls -la tiktok-streamer-*
+
+    - name: 🎉 Create Release
+      uses: softprops/action-gh-release@v1
+      with:
+        name: TikTok Streamer Helper ${{ steps.get_tag.outputs.tag_name }}
+        body_path: CHANGELOG.md
+        draft: false
+        prerelease: ${{ contains(steps.get_tag.outputs.tag_name, '-') }}
+        files: |
+          tiktok-streamer-frontend-${{ steps.get_tag.outputs.tag_name }}.tar.gz
+          tiktok-streamer-extension-${{ steps.get_tag.outputs.tag_name }}.zip
+          tiktok-streamer-source-${{ steps.get_tag.outputs.tag_name }}.tar.gz
+          tiktok-streamer-teleprompter-*-${{ steps.get_tag.outputs.tag_name }}.*
 
   # Deployment notification
   notify-deployment:
     name: 📢 Notify Deployment
     runs-on: ubuntu-latest
-    needs: [create-release, build-frontend, build-extension, build-teleprompter, build-docker, create-source-archive]
+    needs: [create-release]
     if: always()
 
     steps:
+    - name: 🏷️ Get tag name
+      id: get_tag
+      run: echo "tag_name=${GITHUB_REF#refs/tags/}" >> $GITHUB_OUTPUT
+
     - name: 🎉 Release Complete
       run: |
-        echo "🚀 Release ${{ needs.create-release.outputs.tag_name }} completed!"
+        echo "🚀 Release ${{ steps.get_tag.outputs.tag_name }} completed!"
         echo ""
         echo "📦 **Artifacts Created:**"
         echo "- Frontend build archive"
@@ -354,7 +362,7 @@ EOF
         echo "- Source code archive"
         echo ""
         echo "🐳 **Docker Images:**"
-        echo "- ghcr.io/${{ github.repository }}-backend:${{ needs.create-release.outputs.tag_name }}"
-        echo "- ghcr.io/${{ github.repository }}-frontend:${{ needs.create-release.outputs.tag_name }}"
+        echo "- ghcr.io/${{ github.repository }}-backend:${{ steps.get_tag.outputs.tag_name }}"
+        echo "- ghcr.io/${{ github.repository }}-frontend:${{ steps.get_tag.outputs.tag_name }}"
         echo ""
         echo "✅ All components built and published successfully!"

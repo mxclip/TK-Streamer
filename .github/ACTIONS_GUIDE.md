@@ -42,10 +42,10 @@ teleprompter ┘            security
 **Triggers**: Git tag push (v*)
 
 ### What it does:
-- Creates GitHub release with changelog
-- Builds production artifacts for all platforms
+- Builds production artifacts for all platforms in parallel
 - Publishes Docker images to GitHub Container Registry
-- Creates downloadable packages
+- Creates GitHub release with changelog and all artifacts
+- Uses modern GitHub Actions for improved reliability
 
 ### Artifacts created:
 - **Frontend**: Production build archive

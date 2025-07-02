@@ -111,36 +111,36 @@ jobs:
 
         # Test basic import and functionality
         python -c "
-import sys
-import os
-sys.path.insert(0, os.getcwd())
-try:
-    from app.main import app
-    from app.core.config import settings
-    print('✅ Backend imports successful')
-    print(f'✅ Database URI configured')
+        import sys
+        import os
+        sys.path.insert(0, os.getcwd())
+        try:
+            from app.main import app
+            from app.core.config import settings
+            print('✅ Backend imports successful')
+            print(f'✅ Database URI configured')
 
-    # Test that the app can be created
-    from fastapi.openapi.utils import get_openapi
-    schema = get_openapi(
-title=app.title,
-version=app.version,
-openapi_version=app.openapi_version,
-description=app.description,
-routes=app.routes,
-    )
-    print('✅ OpenAPI schema generation successful')
-    print(f'✅ App has {len(app.routes)} routes configured')
-except ImportError as e:
-    print(f'❌ Import error: {e}')
-    import traceback
-    traceback.print_exc()
-    sys.exit(1)
-except Exception as e:
-    print(f'❌ Backend setup failed: {e}')
-    import traceback
-    traceback.print_exc()
-    sys.exit(1)
+            # Test that the app can be created
+            from fastapi.openapi.utils import get_openapi
+            schema = get_openapi(
+                title=app.title,
+                version=app.version,
+                openapi_version=app.openapi_version,
+                description=app.description,
+                routes=app.routes,
+            )
+            print('✅ OpenAPI schema generation successful')
+            print(f'✅ App has {len(app.routes)} routes configured')
+        except ImportError as e:
+            print(f'❌ Import error: {e}')
+            import traceback
+            traceback.print_exc()
+            sys.exit(1)
+        except Exception as e:
+            print(f'❌ Backend setup failed: {e}')
+            import traceback
+            traceback.print_exc()
+            sys.exit(1)
         "
 
     - name: 🏗️ Test SQLite fallback
@@ -153,29 +153,29 @@ except Exception as e:
       run: |
         export PYTHONPATH="$(pwd):${PYTHONPATH}"
         python -c "
-import sys
-import os
-sys.path.insert(0, os.getcwd())
-try:
-    from app.main import app
-    print('✅ App imported with SQLite configuration')
+        import sys
+        import os
+        sys.path.insert(0, os.getcwd())
+        try:
+            from app.main import app
+            print('✅ App imported with SQLite configuration')
 
-    # Test database initialization if function exists
-    try:
-from app.core.db import create_db_and_tables
-create_db_and_tables()
-print('✅ SQLite database tables created')
-    except ImportError:
-print('ℹ️ Database creation function not found, checking app startup')
-# Alternative: test app startup which should create tables
-import asyncio
+            # Test database initialization if function exists
+            try:
+                from app.core.db import create_db_and_tables
+                create_db_and_tables()
+                print('✅ SQLite database tables created')
+            except ImportError:
+                print('ℹ️ Database creation function not found, checking app startup')
+                # Alternative: test app startup which should create tables
+                import asyncio
 
-    print('✅ SQLite database setup successful')
-except Exception as e:
-    print(f'❌ SQLite setup failed: {e}')
-    import traceback
-    traceback.print_exc()
-    sys.exit(1)
+            print('✅ SQLite database setup successful')
+        except Exception as e:
+            print(f'❌ SQLite setup failed: {e}')
+            import traceback
+            traceback.print_exc()
+            sys.exit(1)
         "
 
   # Frontend Testing and Building
