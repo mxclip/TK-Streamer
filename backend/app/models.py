@@ -56,9 +56,13 @@ class AccountUpdate(SQLModel):
 # Bag model - Luxury bags inventory
 class BagBase(SQLModel):
     brand: str = Field(max_length=100)
-    model: str = Field(max_length=100)
+    model: str = Field(max_length=100, description="Product name/model")
     color: str = Field(max_length=50)
     condition: str = Field(max_length=50)
+    # Extended fields for user requirements
+    details: Optional[str] = Field(default=None, max_length=1000, description="Product details and description")
+    price: Optional[float] = Field(default=None, ge=0, description="Product price")
+    authenticity_verified: bool = Field(default=False, description="Whether authenticity is verified")
 
 
 class Bag(BagBase, table=True):
@@ -76,6 +80,17 @@ class BagCreate(BagBase):
     account_id: int
 
 
+# User-friendly Bag creation model (using 'name' instead of 'model')
+class BagCreateUser(SQLModel):
+    name: str = Field(max_length=100, description="Product name")
+    brand: str = Field(max_length=100)
+    color: str = Field(max_length=50)
+    details: Optional[str] = Field(default=None, max_length=1000, description="Product details and description")
+    price: Optional[float] = Field(default=None, ge=0, description="Product price")
+    condition: str = Field(max_length=50, default="Good")
+    authenticity_verified: bool = Field(default=False, description="Whether authenticity is verified")
+
+
 class BagRead(BagBase):
     id: int
     account_id: int
@@ -88,6 +103,9 @@ class BagUpdate(SQLModel):
     model: Optional[str] = None
     color: Optional[str] = None
     condition: Optional[str] = None
+    details: Optional[str] = None
+    price: Optional[float] = None
+    authenticity_verified: Optional[bool] = None
 
 
 # Script model - Scripts for each bag

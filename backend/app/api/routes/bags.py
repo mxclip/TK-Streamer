@@ -4,9 +4,65 @@ from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlmodel import Session, select
 
 from app.core.deps import get_db, get_current_admin_user, get_current_streamer_user, get_account_access_filter
-from app.models import Account, Bag, BagRead, Script, ScriptRead
+from app.models import Account, Bag, BagRead, BagCreateUser, Script, ScriptRead, ScriptCreate, ScriptType
 
 router = APIRouter()
+
+
+@router.post("/bags", response_model=BagRead)
+def create_bag(
+    bag_data: BagCreateUser,
+    session: Annotated[Session, Depends(get_db)],
+    current_user: Annotated[Account, Depends(get_current_streamer_user)]
+) -> BagRead:
+    """
+    Create a new bag with name, brand, color, details, price.
+    Converts 'name' field to 'model' for database storage.
+    """
+    # Convert user-friendly input to database model
+    bag = Bag(
+        brand=bag_data.brand,
+        model=bag_data.name,  # Map 'name' to 'model'
+        color=bag_data.color,
+        condition=bag_data.condition,
+        details=bag_data.details,
+        price=bag_data.price,
+        authenticity_verified=bag_data.authenticity_verified,
+        account_id=current_user.id
+    )
+    
+    session.add(bag)
+    session.commit()
+    session.refresh(bag)
+    
+    # Auto-generate basic scripts for the new bag
+    script_templates = [
+        (ScriptType.hook, f"Check out this amazing {bag_data.brand} {bag_data.name}!"),
+        (ScriptType.look, f"Look at this beautiful {bag_data.color} color and exquisite craftsmanship!"),
+        (ScriptType.story, f"This {bag_data.brand} piece represents timeless luxury and style."),
+        (ScriptType.value, f"High-quality {bag_data.condition} condition - exceptional value!"),
+        (ScriptType.cta, "Don't miss out on this incredible piece - grab it now!")
+    ]
+    
+    # Create scripts with details if provided
+    if bag_data.details:
+        script_templates[1] = (ScriptType.look, f"Look at these details: {bag_data.details[:100]}...")
+        script_templates[2] = (ScriptType.story, f"{bag_data.details[:150]}...")
+    
+    if bag_data.price:
+        script_templates[3] = (ScriptType.value, f"Amazing value at ${bag_data.price} - {bag_data.condition} condition!")
+    
+    for script_type, content in script_templates:
+        script = Script(
+            content=content,
+            script_type=script_type,
+            bag_id=bag.id
+        )
+        session.add(script)
+    
+    session.commit()
+    
+    return bag
 
 
 @router.get("/bags", response_model=List[BagRead])
