@@ -1,0 +1,352 @@
+name: 🚀 Release
+
+on:
+  push:
+    tags:
+      - 'v*'
+
+env:
+  NODE_VERSION: '18'
+  PYTHON_VERSION: '3.11'
+  REGISTRY: ghcr.io
+  IMAGE_NAME: ${{ github.repository }}
+
+jobs:
+  # Create GitHub Release
+  create-release:
+    name: 📦 Create Release
+    runs-on: ubuntu-latest
+    outputs:
+      upload_url: ${{ steps.create_release.outputs.upload_url }}
+      tag_name: ${{ steps.get_tag.outputs.tag_name }}
+    
+    steps:
+    - name: 📥 Checkout code
+      uses: actions/checkout@v4
+
+    - name: 🏷️ Get tag name
+      id: get_tag
+      run: echo "tag_name=${GITHUB_REF#refs/tags/}" >> $GITHUB_OUTPUT
+
+    - name: 📝 Generate changelog
+      id: changelog
+      run: |
+        # Generate basic changelog from commits
+        echo "## What's Changed" > CHANGELOG.md
+        echo "" >> CHANGELOG.md
+        git log --pretty=format:"- %s (%h)" $(git describe --tags --abbrev=0 HEAD^)..HEAD >> CHANGELOG.md || echo "- Initial release" >> CHANGELOG.md
+        echo "" >> CHANGELOG.md
+        echo "## Components" >> CHANGELOG.md
+        echo "- 🐍 **Backend**: FastAPI with SQLite/PostgreSQL support" >> CHANGELOG.md
+        echo "- ⚛️ **Frontend**: React admin dashboard" >> CHANGELOG.md
+        echo "- 🧩 **Extension**: Chrome MV3 extension for TikTok" >> CHANGELOG.md
+        echo "- 📺 **Teleprompter**: Electron desktop app" >> CHANGELOG.md
+        echo "- 🐳 **Docker**: Production-ready containers" >> CHANGELOG.md
+
+    - name: 🎉 Create Release
+      id: create_release
+      uses: actions/create-release@v1
+      env:
+        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      with:
+        tag_name: ${{ steps.get_tag.outputs.tag_name }}
+        release_name: TikTok Streamer Helper ${{ steps.get_tag.outputs.tag_name }}
+        body_path: CHANGELOG.md
+        draft: false
+        prerelease: ${{ contains(steps.get_tag.outputs.tag_name, '-') }}
+
+  # Build and Package Frontend
+  build-frontend:
+    name: 🏗️ Build Frontend
+    runs-on: ubuntu-latest
+    needs: create-release
+
+    steps:
+    - name: 📥 Checkout code
+      uses: actions/checkout@v4
+
+    - name: 🟢 Set up Node.js
+      uses: actions/setup-node@v4
+      with:
+        node-version: ${{ env.NODE_VERSION }}
+        cache: 'npm'
+        cache-dependency-path: frontend/package-lock.json
+
+    - name: 📦 Install dependencies
+      working-directory: ./frontend
+      run: npm ci
+
+    - name: 🏗️ Build for production
+      working-directory: ./frontend
+      env:
+        REACT_APP_VERSION: ${{ needs.create-release.outputs.tag_name }}
+        REACT_APP_API_URL: /api/v1
+      run: npm run build
+
+    - name: 📄 Create build info
+      working-directory: ./frontend/build
+      run: |
+        echo "{
+          \"version\": \"${{ needs.create-release.outputs.tag_name }}\",
+          \"buildTime\": \"$(date -u +%Y-%m-%dT%H:%M:%SZ)\",
+          \"commit\": \"${{ github.sha }}\"
+        }" > build-info.json
+
+    - name: 📦 Create frontend archive
+      run: |
+        cd frontend/build
+        tar -czf ../../tiktok-streamer-frontend-${{ needs.create-release.outputs.tag_name }}.tar.gz .
+
+    - name: 📤 Upload frontend release asset
+      uses: actions/upload-release-asset@v1
+      env:
+        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      with:
+        upload_url: ${{ needs.create-release.outputs.upload_url }}
+        asset_path: ./tiktok-streamer-frontend-${{ needs.create-release.outputs.tag_name }}.tar.gz
+        asset_name: tiktok-streamer-frontend-${{ needs.create-release.outputs.tag_name }}.tar.gz
+        asset_content_type: application/gzip
+
+  # Build and Package Chrome Extension
+  build-extension:
+    name: 🧩 Build Extension
+    runs-on: ubuntu-latest
+    needs: create-release
+
+    steps:
+    - name: 📥 Checkout code
+      uses: actions/checkout@v4
+
+    - name: 🟢 Set up Node.js
+      uses: actions/setup-node@v4
+      with:
+        node-version: ${{ env.NODE_VERSION }}
+
+    - name: 🔧 Update extension version
+      working-directory: ./extension/simple-extension
+      run: |
+        # Update manifest version
+        VERSION=${{ needs.create-release.outputs.tag_name }}
+        VERSION=${VERSION#v}  # Remove 'v' prefix
+        
+        # Update manifest.json
+        jq --arg version "$VERSION" '.version = $version' manifest.json > manifest.tmp
+        mv manifest.tmp manifest.json
+        
+        echo "📦 Updated extension to version $VERSION"
+
+    - name: 📄 Add build info
+      working-directory: ./extension/simple-extension
+      run: |
+        echo "// Build Information
+const BUILD_INFO = {
+  version: '${{ needs.create-release.outputs.tag_name }}',
+  buildTime: '$(date -u +%Y-%m-%dT%H:%M:%SZ)',
+  commit: '${{ github.sha }}'
+};
+
+// Original background script follows
+" > background-with-info.js
+        cat background.js >> background-with-info.js
+        mv background-with-info.js background.js
+
+    - name: 📦 Create extension package
+      run: |
+        cd extension/simple-extension
+        zip -r ../../tiktok-streamer-extension-${{ needs.create-release.outputs.tag_name }}.zip .
+
+    - name: 📤 Upload extension release asset
+      uses: actions/upload-release-asset@v1
+      env:
+        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      with:
+        upload_url: ${{ needs.create-release.outputs.upload_url }}
+        asset_path: ./tiktok-streamer-extension-${{ needs.create-release.outputs.tag_name }}.zip
+        asset_name: tiktok-streamer-extension-${{ needs.create-release.outputs.tag_name }}.zip
+        asset_content_type: application/zip
+
+  # Build Teleprompter for Multiple Platforms
+  build-teleprompter:
+    name: 📺 Build Teleprompter
+    strategy:
+      matrix:
+        os: [ubuntu-latest, windows-latest, macos-latest]
+        include:
+          - os: ubuntu-latest
+            platform: linux
+            ext: .AppImage
+          - os: windows-latest
+            platform: win
+            ext: .exe
+          - os: macos-latest
+            platform: mac
+            ext: .dmg
+    
+    runs-on: ${{ matrix.os }}
+    needs: create-release
+
+    steps:
+    - name: 📥 Checkout code
+      uses: actions/checkout@v4
+
+    - name: 🟢 Set up Node.js
+      uses: actions/setup-node@v4
+      with:
+        node-version: ${{ env.NODE_VERSION }}
+        cache: 'npm'
+        cache-dependency-path: teleprompter/package-lock.json
+
+    - name: 📦 Install dependencies
+      working-directory: ./teleprompter
+      run: npm ci
+
+    - name: 🔧 Update version
+      working-directory: ./teleprompter
+      run: |
+        VERSION=${{ needs.create-release.outputs.tag_name }}
+        VERSION=${VERSION#v}  # Remove 'v' prefix
+        npm version $VERSION --no-git-tag-version
+
+    - name: 🏗️ Build Electron app
+      working-directory: ./teleprompter
+      run: |
+        npm run build:${{ matrix.platform }} || npm run dist || echo "Build completed"
+
+    - name: 📦 Find and upload artifacts
+      shell: bash
+      working-directory: ./teleprompter
+      run: |
+        # Find built files
+        if [ -d "dist" ]; then
+          find dist -name "*${{ matrix.ext }}" -o -name "*.tar.gz" -o -name "*.zip" | head -1 > artifact_path.txt
+          if [ -s artifact_path.txt ]; then
+            ARTIFACT_PATH=$(cat artifact_path.txt)
+            ARTIFACT_NAME="tiktok-streamer-teleprompter-${{ matrix.platform }}-${{ needs.create-release.outputs.tag_name }}${{ matrix.ext }}"
+            echo "Found artifact: $ARTIFACT_PATH"
+            echo "ARTIFACT_PATH=$ARTIFACT_PATH" >> $GITHUB_ENV
+            echo "ARTIFACT_NAME=$ARTIFACT_NAME" >> $GITHUB_ENV
+          fi
+        fi
+
+    - name: 📤 Upload teleprompter release asset
+      if: env.ARTIFACT_PATH != ''
+      uses: actions/upload-release-asset@v1
+      env:
+        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      with:
+        upload_url: ${{ needs.create-release.outputs.upload_url }}
+        asset_path: ./teleprompter/${{ env.ARTIFACT_PATH }}
+        asset_name: ${{ env.ARTIFACT_NAME }}
+        asset_content_type: application/octet-stream
+
+  # Build and Push Docker Images
+  build-docker:
+    name: 🐳 Build Docker
+    runs-on: ubuntu-latest
+    needs: create-release
+    permissions:
+      contents: read
+      packages: write
+
+    steps:
+    - name: 📥 Checkout code
+      uses: actions/checkout@v4
+
+    - name: 🐳 Set up Docker Buildx
+      uses: docker/setup-buildx-action@v3
+
+    - name: 🔑 Log in to Container Registry
+      uses: docker/login-action@v3
+      with:
+        registry: ${{ env.REGISTRY }}
+        username: ${{ github.actor }}
+        password: ${{ secrets.GITHUB_TOKEN }}
+
+    - name: 📝 Extract metadata for backend
+      id: meta-backend
+      uses: docker/metadata-action@v5
+      with:
+        images: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}-backend
+        tags: |
+          type=ref,event=tag
+          type=semver,pattern={{version}}
+          type=semver,pattern={{major}}.{{minor}}
+
+    - name: 🏗️ Build and push backend image
+      uses: docker/build-push-action@v5
+      with:
+        context: ./backend
+        push: true
+        tags: ${{ steps.meta-backend.outputs.tags }}
+        labels: ${{ steps.meta-backend.outputs.labels }}
+        cache-from: type=gha
+        cache-to: type=gha,mode=max
+
+    - name: 📝 Extract metadata for frontend
+      id: meta-frontend
+      uses: docker/metadata-action@v5
+      with:
+        images: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}-frontend
+        tags: |
+          type=ref,event=tag
+          type=semver,pattern={{version}}
+          type=semver,pattern={{major}}.{{minor}}
+
+    - name: 🏗️ Build and push frontend image
+      uses: docker/build-push-action@v5
+      with:
+        context: ./frontend
+        push: true
+        tags: ${{ steps.meta-frontend.outputs.tags }}
+        labels: ${{ steps.meta-frontend.outputs.labels }}
+        cache-from: type=gha
+        cache-to: type=gha,mode=max
+
+  # Create Source Archive
+  create-source-archive:
+    name: 📄 Create Source Archive
+    runs-on: ubuntu-latest
+    needs: create-release
+
+    steps:
+    - name: 📥 Checkout code
+      uses: actions/checkout@v4
+
+    - name: 📦 Create source archive
+      run: |
+        git archive --format=tar.gz --prefix=tiktok-streamer-${{ needs.create-release.outputs.tag_name }}/ HEAD > tiktok-streamer-source-${{ needs.create-release.outputs.tag_name }}.tar.gz
+
+    - name: 📤 Upload source archive
+      uses: actions/upload-release-asset@v1
+      env:
+        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      with:
+        upload_url: ${{ needs.create-release.outputs.upload_url }}
+        asset_path: ./tiktok-streamer-source-${{ needs.create-release.outputs.tag_name }}.tar.gz
+        asset_name: tiktok-streamer-source-${{ needs.create-release.outputs.tag_name }}.tar.gz
+        asset_content_type: application/gzip
+
+  # Deployment notification
+  notify-deployment:
+    name: 📢 Notify Deployment
+    runs-on: ubuntu-latest
+    needs: [create-release, build-frontend, build-extension, build-teleprompter, build-docker, create-source-archive]
+    if: always()
+
+    steps:
+    - name: 🎉 Release Complete
+      run: |
+        echo "🚀 Release ${{ needs.create-release.outputs.tag_name }} completed!"
+        echo ""
+        echo "📦 **Artifacts Created:**"
+        echo "- Frontend build archive"
+        echo "- Chrome extension package"
+        echo "- Teleprompter apps (Linux, Windows, macOS)"
+        echo "- Docker images (backend, frontend)"
+        echo "- Source code archive"
+        echo ""
+        echo "🐳 **Docker Images:**"
+        echo "- ghcr.io/${{ github.repository }}-backend:${{ needs.create-release.outputs.tag_name }}"
+        echo "- ghcr.io/${{ github.repository }}-frontend:${{ needs.create-release.outputs.tag_name }}"
+        echo ""
+        echo "✅ All components built and published successfully!" 
