@@ -15,7 +15,7 @@ jobs:
   backend:
     name: 🐍 Backend (FastAPI)
     runs-on: ubuntu-latest
-    
+
     services:
       postgres:
         image: postgres:15
@@ -53,7 +53,7 @@ jobs:
       run: |
         python --version
         python -m pip install --upgrade pip setuptools wheel
-        
+
         # Check if we have requirements.txt
         if [ -f "requirements.txt" ]; then
           echo "📦 Installing from requirements.txt..."
@@ -63,10 +63,10 @@ jobs:
           # Install core dependencies manually
           pip install fastapi uvicorn sqlalchemy alembic python-multipart python-jose passlib bcrypt python-dotenv
         fi
-        
+
         # Install development dependencies
         pip install pytest pytest-asyncio pytest-cov black flake8 httpx
-        
+
         echo "✅ Dependencies installed successfully"
 
     - name: 🎨 Code formatting check
@@ -102,13 +102,13 @@ jobs:
       run: |
         # Add current directory to Python path (fix for our new structure)
         export PYTHONPATH="$(pwd):${PYTHONPATH}"
-        
+
         # Check if we have tests directory
         if [ -d "tests" ]; then
           echo "🧪 Running pytest tests..."
           pytest tests/ --cov=app --cov-report=xml --cov-report=term || echo "⚠️ Tests failed but continuing..."
         fi
-        
+
         # Test basic import and functionality
         python -c "
 import sys
@@ -119,15 +119,15 @@ try:
     from app.core.config import settings
     print('✅ Backend imports successful')
     print(f'✅ Database URI configured')
-    
+
     # Test that the app can be created
     from fastapi.openapi.utils import get_openapi
     schema = get_openapi(
-        title=app.title,
-        version=app.version,
-        openapi_version=app.openapi_version,
-        description=app.description,
-        routes=app.routes,
+title=app.title,
+version=app.version,
+openapi_version=app.openapi_version,
+description=app.description,
+routes=app.routes,
     )
     print('✅ OpenAPI schema generation successful')
     print(f'✅ App has {len(app.routes)} routes configured')
@@ -159,17 +159,17 @@ sys.path.insert(0, os.getcwd())
 try:
     from app.main import app
     print('✅ App imported with SQLite configuration')
-    
+
     # Test database initialization if function exists
     try:
-        from app.core.db import create_db_and_tables
-        create_db_and_tables()
-        print('✅ SQLite database tables created')
+from app.core.db import create_db_and_tables
+create_db_and_tables()
+print('✅ SQLite database tables created')
     except ImportError:
-        print('ℹ️ Database creation function not found, checking app startup')
-        # Alternative: test app startup which should create tables
-        import asyncio
-        
+print('ℹ️ Database creation function not found, checking app startup')
+# Alternative: test app startup which should create tables
+import asyncio
+
     print('✅ SQLite database setup successful')
 except Exception as e:
     print(f'❌ SQLite setup failed: {e}')
@@ -202,22 +202,22 @@ except Exception as e:
           echo "❌ package.json not found in frontend directory"
           exit 1
         fi
-        
+
         # Install dependencies
         npm ci
-        
+
         # Verify required files exist
         echo "🔍 Checking required frontend files..."
         if [ ! -f "public/index.html" ]; then
           echo "❌ public/index.html not found"
           exit 1
         fi
-        
+
         if [ ! -f "src/index.tsx" ] && [ ! -f "src/index.js" ]; then
           echo "❌ src/index.tsx or src/index.js not found"
           exit 1
         fi
-        
+
         echo "✅ All required frontend files found"
 
     - name: 🔍 Lint code
@@ -244,13 +244,13 @@ except Exception as e:
         export CI=true
         export GENERATE_SOURCEMAP=false
         npm run build
-        
+
         # Verify build directory was created
         if [ ! -d "build" ]; then
           echo "❌ Build directory not created"
           exit 1
         fi
-        
+
         echo "✅ Frontend build successful"
         echo "📁 Build contents:"
         ls -la build/
@@ -327,17 +327,17 @@ except Exception as e:
         node -e "
         const pkg = require('./package.json');
         const fs = require('fs');
-        
+
         console.log('📦 Teleprompter:', pkg.name, 'v' + pkg.version);
-        
+
         if (!fs.existsSync('./src/main.js')) {
           throw new Error('Main process file missing');
         }
-        
+
         if (!fs.existsSync('./src/renderer/index.html')) {
           throw new Error('Renderer HTML missing');
         }
-        
+
         console.log('✅ Electron app structure valid');
         "
 
@@ -421,36 +421,36 @@ except Exception as e:
         # Set PYTHONPATH for backend startup
         export PYTHONPATH="$(pwd):${PYTHONPATH}"
         python -m uvicorn app.main:app --host 0.0.0.0 --port 8000 &
-        
+
         # Wait for backend to start and test health
         sleep 10
         curl -f http://localhost:8000/health || (echo "❌ Backend failed to start" && exit 1)
-        
+
     - name: 🧪 Test API endpoints
       run: |
         # Test health endpoint
         curl -f http://localhost:8000/health || exit 1
         echo "✅ Health endpoint working"
-        
+
         # Test status endpoint
         curl -f http://localhost:8000/api/v1/status || exit 1
         echo "✅ Status endpoint working"
-        
+
         # Test API documentation
         curl -f http://localhost:8000/docs || exit 1
         echo "✅ API docs accessible"
-        
+
         # Test authentication
         AUTH_RESPONSE=$(curl -s -X POST http://localhost:8000/api/v1/auth/login/access-token \
           -H "Content-Type: application/x-www-form-urlencoded" \
           -d "username=admin@example.com&password=changethis")
-        
+
         if echo "$AUTH_RESPONSE" | grep -q "access_token"; then
           echo "✅ Authentication working"
-          
+
           # Extract token for further tests
           TOKEN=$(echo "$AUTH_RESPONSE" | grep -o '"access_token":"[^"]*"' | cut -d'"' -f4)
-          
+
           # Test bag creation API with user-friendly schema
           BAG_RESPONSE=$(curl -s -X POST http://localhost:8000/api/v1/bags \
             -H "Authorization: Bearer $TOKEN" \
@@ -464,14 +464,14 @@ except Exception as e:
               "condition": "Good",
               "authenticity_verified": true
             }')
-          
+
           if echo "$BAG_RESPONSE" | grep -q '"id"'; then
             echo "✅ Bag creation API working"
-            
+
             # Test product matching
             MATCH_RESPONSE=$(curl -s -X GET "http://localhost:8000/api/v1/match?title=Test%20Brand%20Test%20Bag" \
               -H "Authorization: Bearer $TOKEN")
-            
+
             if echo "$MATCH_RESPONSE" | grep -q '"matched":true'; then
               echo "✅ Product matching working"
             else
@@ -483,7 +483,7 @@ except Exception as e:
         else
           echo "⚠️ Authentication needs verification"
         fi
-        
+
         echo "✅ Core API functionality tested"
 
   # Security Scanning
@@ -534,4 +534,4 @@ except Exception as e:
         echo "✅ Integration: API endpoints working"
         echo "✅ Security: Vulnerability scan completed"
         echo ""
-        echo "🚀 Ready for deployment!" 
+        echo "🚀 Ready for deployment!"
