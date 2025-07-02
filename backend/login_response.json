@@ -1,0 +1,1 @@
+{"access_token":"eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJleHAiOjE3NTIxODE2MDEsInN1YiI6IjEifQ.att97EEOnqA-jq0ZtbrOUAfR51dVMNMBY2ctM86vxCc","token_type":"bearer","expires_in":691200,"user":{"id":1,"email":"admin@example.com","name":"Admin User","role":"admin","is_active":true,"is_superuser":true}}

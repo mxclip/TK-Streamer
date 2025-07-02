@@ -1,5 +1,6 @@
 import json
 import logging
+from datetime import datetime
 from typing import Dict, List, Set
 from fastapi import WebSocket, WebSocketDisconnect
 from sqlmodel import Session, select
@@ -129,7 +130,7 @@ async def send_missing_product_alert(product_title: str):
             "data": {
                 "title": product_title,
                 "message": "SCRIPT MISSING",
-                "timestamp": str(logger.time())
+                "timestamp": datetime.utcnow().isoformat()
             }
         }
         
@@ -194,7 +195,7 @@ async def handle_websocket_message(message_data: dict, connection_id: str, sessi
             # Respond with pong
             pong_message = {
                 "type": "pong",
-                "data": {"timestamp": str(logger.time())}
+                "data": {"timestamp": datetime.utcnow().isoformat()}
             }
             await manager.send_personal_message(pong_message, connection_id)
         

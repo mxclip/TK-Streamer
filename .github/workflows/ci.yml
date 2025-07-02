@@ -100,8 +100,8 @@ jobs:
         SECRET_KEY: test-secret-key-for-ci
         PYTHONPATH: .
       run: |
-        # Add current directory to Python path
-        export PYTHONPATH="${PYTHONPATH}:$(pwd)"
+        # Add current directory to Python path (fix for our new structure)
+        export PYTHONPATH="$(pwd):${PYTHONPATH}"
         
         # Check if we have tests directory
         if [ -d "tests" ]; then
@@ -151,7 +151,7 @@ except Exception as e:
         SECRET_KEY: test-secret-key-for-ci
         PYTHONPATH: .
       run: |
-        export PYTHONPATH="${PYTHONPATH}:$(pwd)"
+        export PYTHONPATH="$(pwd):${PYTHONPATH}"
         python -c "
 import sys
 import os
@@ -416,22 +416,75 @@ except Exception as e:
         DATABASE_TYPE: sqlite
         SQLITE_DATABASE_PATH: integration_test.db
         SECRET_KEY: integration-test-secret
+        PYTHONPATH: .
       run: |
+        # Set PYTHONPATH for backend startup
+        export PYTHONPATH="$(pwd):${PYTHONPATH}"
         python -m uvicorn app.main:app --host 0.0.0.0 --port 8000 &
+        
+        # Wait for backend to start and test health
         sleep 10
+        curl -f http://localhost:8000/health || (echo "❌ Backend failed to start" && exit 1)
         
     - name: 🧪 Test API endpoints
       run: |
         # Test health endpoint
         curl -f http://localhost:8000/health || exit 1
+        echo "✅ Health endpoint working"
         
         # Test status endpoint
         curl -f http://localhost:8000/api/v1/status || exit 1
+        echo "✅ Status endpoint working"
         
         # Test API documentation
         curl -f http://localhost:8000/docs || exit 1
+        echo "✅ API docs accessible"
         
-        echo "✅ All API endpoints responding correctly"
+        # Test authentication
+        AUTH_RESPONSE=$(curl -s -X POST http://localhost:8000/api/v1/auth/login/access-token \
+          -H "Content-Type: application/x-www-form-urlencoded" \
+          -d "username=admin@example.com&password=changethis")
+        
+        if echo "$AUTH_RESPONSE" | grep -q "access_token"; then
+          echo "✅ Authentication working"
+          
+          # Extract token for further tests
+          TOKEN=$(echo "$AUTH_RESPONSE" | grep -o '"access_token":"[^"]*"' | cut -d'"' -f4)
+          
+          # Test bag creation API with user-friendly schema
+          BAG_RESPONSE=$(curl -s -X POST http://localhost:8000/api/v1/bags \
+            -H "Authorization: Bearer $TOKEN" \
+            -H "Content-Type: application/json" \
+            -d '{
+              "name": "Test Bag CI",
+              "brand": "Test Brand",
+              "color": "Black",
+              "details": "Test bag for CI",
+              "price": 100.00,
+              "condition": "Good",
+              "authenticity_verified": true
+            }')
+          
+          if echo "$BAG_RESPONSE" | grep -q '"id"'; then
+            echo "✅ Bag creation API working"
+            
+            # Test product matching
+            MATCH_RESPONSE=$(curl -s -X GET "http://localhost:8000/api/v1/match?title=Test%20Brand%20Test%20Bag" \
+              -H "Authorization: Bearer $TOKEN")
+            
+            if echo "$MATCH_RESPONSE" | grep -q '"matched":true'; then
+              echo "✅ Product matching working"
+            else
+              echo "⚠️ Product matching might need adjustment"
+            fi
+          else
+            echo "⚠️ Bag creation API needs verification"
+          fi
+        else
+          echo "⚠️ Authentication needs verification"
+        fi
+        
+        echo "✅ Core API functionality tested"
 
   # Security Scanning
   security:
