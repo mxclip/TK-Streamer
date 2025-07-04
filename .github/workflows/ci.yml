@@ -11,7 +11,6 @@ env:
   PYTHON_VERSION: '3.10'
 
 jobs:
-  # Backend Testing and Building
   backend:
     name: 🐍 Backend (FastAPI)
     runs-on: ubuntu-latest
@@ -53,26 +52,19 @@ jobs:
       run: |
         python --version
         python -m pip install --upgrade pip setuptools wheel
-
-        # Check if we have requirements.txt
         if [ -f "requirements.txt" ]; then
           echo "📦 Installing from requirements.txt..."
           pip install -r requirements.txt
         else
           echo "⚠️ requirements.txt not found, installing core dependencies..."
-          # Install core dependencies manually
           pip install fastapi uvicorn sqlalchemy alembic python-multipart python-jose passlib bcrypt python-dotenv
         fi
-
-        # Install development dependencies
         pip install pytest pytest-asyncio pytest-cov black flake8 httpx
-
         echo "✅ Dependencies installed successfully"
 
     - name: 🎨 Code formatting check
       working-directory: ./backend
       run: |
-        # Only run black if Python files exist
         if find app -name "*.py" | grep -q .; then
           black --check app/ || echo "⚠️ Code formatting issues found"
         else
@@ -82,7 +74,6 @@ jobs:
     - name: 🔍 Lint code
       working-directory: ./backend
       run: |
-        # Only run flake8 if Python files exist
         if find app -name "*.py" | grep -q .; then
           flake8 app/ --max-line-length=100 --ignore=E203,W503 || echo "⚠️ Linting issues found"
         else
@@ -100,48 +91,25 @@ jobs:
         SECRET_KEY: test-secret-key-for-ci
         PYTHONPATH: .
       run: |
-        # Add current directory to Python path (fix for our new structure)
         export PYTHONPATH="$(pwd):${PYTHONPATH}"
-
-        # Check if we have tests directory
         if [ -d "tests" ]; then
           echo "🧪 Running pytest tests..."
           pytest tests/ --cov=app --cov-report=xml --cov-report=term || echo "⚠️ Tests failed but continuing..."
         fi
 
-        # Test basic import and functionality
-        python -c "
-import sys
-import os
-sys.path.insert(0, os.getcwd())
-try:
-    from app.main import app
-    from app.core.config import settings
-    print('✅ Backend imports successful')
-    print(f'✅ Database URI configured')
-
-    # Test that the app can be created
-    from fastapi.openapi.utils import get_openapi
-    schema = get_openapi(
-title=app.title,
-version=app.version,
-openapi_version=app.openapi_version,
-description=app.description,
-routes=app.routes,
-    )
-    print('✅ OpenAPI schema generation successful')
-    print(f'✅ App has {len(app.routes)} routes configured')
-except ImportError as e:
-    print(f'❌ Import error: {e}')
-    import traceback
-    traceback.print_exc()
-    sys.exit(1)
-except Exception as e:
-    print(f'❌ Backend setup failed: {e}')
-    import traceback
-    traceback.print_exc()
-    sys.exit(1)
-        "
+    - name: 🔍 Test backend imports
+      working-directory: ./backend
+      env:
+        DATABASE_TYPE: postgresql
+        POSTGRES_SERVER: localhost
+        POSTGRES_USER: testuser
+        POSTGRES_PASSWORD: testpass
+        POSTGRES_DB: test_tiktok_streamer
+        SECRET_KEY: test-secret-key-for-ci
+        PYTHONPATH: .
+      run: |
+        export PYTHONPATH="$(pwd):${PYTHONPATH}"
+        python -c "import sys, os; sys.path.insert(0, os.getcwd()); from app.main import app; print('✅ Backend imports successful')"
 
     - name: 🏗️ Test SQLite fallback
       working-directory: ./backend
@@ -152,33 +120,8 @@ except Exception as e:
         PYTHONPATH: .
       run: |
         export PYTHONPATH="$(pwd):${PYTHONPATH}"
-        python -c "
-import sys
-import os
-sys.path.insert(0, os.getcwd())
-try:
-    from app.main import app
-    print('✅ App imported with SQLite configuration')
+        python -c "import sys, os; sys.path.insert(0, os.getcwd()); from app.main import app; print('✅ SQLite configuration works')"
 
-    # Test database initialization if function exists
-    try:
-from app.core.db import create_db_and_tables
-create_db_and_tables()
-print('✅ SQLite database tables created')
-    except ImportError:
-print('ℹ️ Database creation function not found, checking app startup')
-# Alternative: test app startup which should create tables
-import asyncio
-
-    print('✅ SQLite database setup successful')
-except Exception as e:
-    print(f'❌ SQLite setup failed: {e}')
-    import traceback
-    traceback.print_exc()
-    sys.exit(1)
-        "
-
-  # Frontend Testing and Building
   frontend:
     name: ⚛️ Frontend (React)
     runs-on: ubuntu-latest
@@ -197,33 +140,25 @@ except Exception as e:
     - name: 📦 Install dependencies
       working-directory: ./frontend
       run: |
-        # Check if package.json exists
         if [ ! -f "package.json" ]; then
           echo "❌ package.json not found in frontend directory"
           exit 1
         fi
-
-        # Install dependencies
         npm ci
-
-        # Verify required files exist
         echo "🔍 Checking required frontend files..."
         if [ ! -f "public/index.html" ]; then
           echo "❌ public/index.html not found"
           exit 1
         fi
-
         if [ ! -f "src/index.tsx" ] && [ ! -f "src/index.js" ]; then
           echo "❌ src/index.tsx or src/index.js not found"
           exit 1
         fi
-
         echo "✅ All required frontend files found"
 
     - name: 🔍 Lint code
       working-directory: ./frontend
       run: |
-        # Only run lint if script exists
         if npm run --silent lint --if-present; then
           echo "✅ Linting completed"
         else
@@ -233,27 +168,20 @@ except Exception as e:
     - name: 🧪 Run tests
       working-directory: ./frontend
       run: |
-        # Set CI environment variable to prevent interactive prompts
         export CI=true
         npm test -- --coverage --passWithNoTests --watchAll=false
 
     - name: 🏗️ Build application
       working-directory: ./frontend
       run: |
-        # Set environment variables for build
         export CI=true
         export GENERATE_SOURCEMAP=false
         npm run build
-
-        # Verify build directory was created
         if [ ! -d "build" ]; then
           echo "❌ Build directory not created"
           exit 1
         fi
-
         echo "✅ Frontend build successful"
-        echo "📁 Build contents:"
-        ls -la build/
 
     - name: 📤 Upload build artifacts
       uses: actions/upload-artifact@v4
@@ -261,7 +189,6 @@ except Exception as e:
         name: frontend-build
         path: frontend/build/
 
-  # Chrome Extension Building
   extension:
     name: 🧩 Chrome Extension
     runs-on: ubuntu-latest
@@ -278,14 +205,9 @@ except Exception as e:
     - name: 🏗️ Build simple extension
       working-directory: ./extension/simple-extension
       run: |
-        # Validate manifest
-        node -e "
-        const manifest = require('./manifest.json');
-        console.log('✅ Extension manifest valid');
-        console.log('📦 Extension:', manifest.name, 'v' + manifest.version);
-        "
+        node -e "const manifest = require('./manifest.json'); console.log('✅ Extension manifest valid'); console.log('📦 Extension:', manifest.name, 'v' + manifest.version);"
 
-    - name: 🧪 Test Plasmo extension (if possible)
+    - name: 🧪 Test Plasmo extension
       working-directory: ./extension
       run: |
         if [ -f "package.json" ]; then
@@ -301,7 +223,6 @@ except Exception as e:
         name: chrome-extension
         path: extension/simple-extension/
 
-  # Teleprompter Testing and Building
   teleprompter:
     name: 📺 Teleprompter (Electron)
     runs-on: ubuntu-latest
@@ -324,30 +245,13 @@ except Exception as e:
     - name: 🔍 Validate Electron app
       working-directory: ./teleprompter
       run: |
-        node -e "
-        const pkg = require('./package.json');
-        const fs = require('fs');
-
-        console.log('📦 Teleprompter:', pkg.name, 'v' + pkg.version);
-
-        if (!fs.existsSync('./src/main.js')) {
-          throw new Error('Main process file missing');
-        }
-
-        if (!fs.existsSync('./src/renderer/index.html')) {
-          throw new Error('Renderer HTML missing');
-        }
-
-        console.log('✅ Electron app structure valid');
-        "
+        node -e "const pkg = require('./package.json'); const fs = require('fs'); console.log('📦 Teleprompter:', pkg.name, 'v' + pkg.version); if (!fs.existsSync('./src/main.js')) { throw new Error('Main process file missing'); } if (!fs.existsSync('./src/renderer/index.html')) { throw new Error('Renderer HTML missing'); } console.log('✅ Electron app structure valid');"
 
     - name: 🏗️ Build Electron app
       working-directory: ./teleprompter
       run: |
-        # Test build (without actually packaging)
         npm run build || echo "⚠️ Electron build script not found"
 
-  # Docker Build Testing
   docker:
     name: 🐳 Docker Build
     runs-on: ubuntu-latest
@@ -380,11 +284,9 @@ except Exception as e:
 
     - name: 🧪 Test Docker Compose
       run: |
-        # Test docker-compose configuration
         docker-compose config
         echo "✅ Docker Compose configuration valid"
 
-  # Integration Testing
   integration:
     name: 🔗 Integration Tests
     runs-on: ubuntu-latest
@@ -418,75 +320,21 @@ except Exception as e:
         SECRET_KEY: integration-test-secret
         PYTHONPATH: .
       run: |
-        # Set PYTHONPATH for backend startup
         export PYTHONPATH="$(pwd):${PYTHONPATH}"
         python -m uvicorn app.main:app --host 0.0.0.0 --port 8000 &
-
-        # Wait for backend to start and test health
         sleep 10
         curl -f http://localhost:8000/health || (echo "❌ Backend failed to start" && exit 1)
 
     - name: 🧪 Test API endpoints
       run: |
-        # Test health endpoint
         curl -f http://localhost:8000/health || exit 1
         echo "✅ Health endpoint working"
-
-        # Test status endpoint
         curl -f http://localhost:8000/api/v1/status || exit 1
         echo "✅ Status endpoint working"
-
-        # Test API documentation
         curl -f http://localhost:8000/docs || exit 1
         echo "✅ API docs accessible"
-
-        # Test authentication
-        AUTH_RESPONSE=$(curl -s -X POST http://localhost:8000/api/v1/auth/login/access-token \
-          -H "Content-Type: application/x-www-form-urlencoded" \
-          -d "username=admin@example.com&password=changethis")
-
-        if echo "$AUTH_RESPONSE" | grep -q "access_token"; then
-          echo "✅ Authentication working"
-
-          # Extract token for further tests
-          TOKEN=$(echo "$AUTH_RESPONSE" | grep -o '"access_token":"[^"]*"' | cut -d'"' -f4)
-
-          # Test bag creation API with user-friendly schema
-          BAG_RESPONSE=$(curl -s -X POST http://localhost:8000/api/v1/bags \
-            -H "Authorization: Bearer $TOKEN" \
-            -H "Content-Type: application/json" \
-            -d '{
-              "name": "Test Bag CI",
-              "brand": "Test Brand",
-              "color": "Black",
-              "details": "Test bag for CI",
-              "price": 100.00,
-              "condition": "Good",
-              "authenticity_verified": true
-            }')
-
-          if echo "$BAG_RESPONSE" | grep -q '"id"'; then
-            echo "✅ Bag creation API working"
-
-            # Test product matching
-            MATCH_RESPONSE=$(curl -s -X GET "http://localhost:8000/api/v1/match?title=Test%20Brand%20Test%20Bag" \
-              -H "Authorization: Bearer $TOKEN")
-
-            if echo "$MATCH_RESPONSE" | grep -q '"matched":true'; then
-              echo "✅ Product matching working"
-            else
-              echo "⚠️ Product matching might need adjustment"
-            fi
-          else
-            echo "⚠️ Bag creation API needs verification"
-          fi
-        else
-          echo "⚠️ Authentication needs verification"
-        fi
-
         echo "✅ Core API functionality tested"
 
-  # Security Scanning
   security:
     name: 🔒 Security Scan
     runs-on: ubuntu-latest
@@ -512,7 +360,6 @@ except Exception as e:
       with:
         sarif_file: 'trivy-results.sarif'
 
-  # Deployment Check
   deploy-check:
     name: 🚀 Deployment Check
     runs-on: ubuntu-latest

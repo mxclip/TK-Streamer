@@ -31,7 +31,6 @@ jobs:
     - name: 📝 Generate changelog
       id: changelog
       run: |
-        # Generate basic changelog from commits
         echo "## What's Changed" > CHANGELOG.md
         echo "" >> CHANGELOG.md
         git log --pretty=format:"- %s (%h)" $(git describe --tags --abbrev=0 HEAD^)..HEAD >> CHANGELOG.md || echo "- Initial release" >> CHANGELOG.md
@@ -86,14 +85,13 @@ jobs:
     - name: 📄 Create build info
       working-directory: ./frontend/build
       run: |
-        # Create build info using Heredoc to avoid YAML syntax conflicts
-        cat << 'EOF' > build-info.json
-{
-"version": "${{ needs.create-release.outputs.tag_name }}",
-"buildTime": "$(date -u +%Y-%m-%dT%H:%M:%SZ)",
-"commit": "${{ github.sha }}"
-}
-EOF
+        cat > build-info.json << 'EOF'
+        {
+          "version": "${{ needs.create-release.outputs.tag_name }}",
+          "buildTime": "$(date -u +%Y-%m-%dT%H:%M:%SZ)",
+          "commit": "${{ github.sha }}"
+        }
+        EOF
 
     - name: 📦 Create frontend archive
       run: |
@@ -128,32 +126,25 @@ EOF
     - name: 🔧 Update extension version
       working-directory: ./extension/simple-extension
       run: |
-        # Update manifest version
         VERSION=${{ needs.create-release.outputs.tag_name }}
-        VERSION=${VERSION#v}  # Remove 'v' prefix
-
-        # Update manifest.json
+        VERSION=${VERSION#v}
         jq --arg version "$VERSION" '.version = $version' manifest.json > manifest.tmp
         mv manifest.tmp manifest.json
-
         echo "📦 Updated extension to version $VERSION"
 
     - name: 📄 Add build info
       working-directory: ./extension/simple-extension
       run: |
-        # Create build info using Heredoc to avoid YAML syntax conflicts
-        cat << 'EOF' > build-info.js
-// Build Information
-const BUILD_INFO = {
-  version: '${{ needs.create-release.outputs.tag_name }}',
-  buildTime: '$(date -u +%Y-%m-%dT%H:%M:%SZ)',
-  commit: '${{ github.sha }}'
-};
-
-// Original background script follows
-EOF
-
-        # Combine build info with original background script
+        cat > build-info.js << 'EOF'
+        // Build Information
+        const BUILD_INFO = {
+          version: '${{ needs.create-release.outputs.tag_name }}',
+          buildTime: '$(date -u +%Y-%m-%dT%H:%M:%SZ)',
+          commit: '${{ github.sha }}'
+        };
+        
+        // Original background script follows
+        EOF
         cat build-info.js background.js > background-with-info.js
         mv background-with-info.js background.js
         rm build-info.js
@@ -212,7 +203,7 @@ EOF
       working-directory: ./teleprompter
       run: |
         VERSION=${{ needs.create-release.outputs.tag_name }}
-        VERSION=${VERSION#v}  # Remove 'v' prefix
+        VERSION=${VERSION#v}
         npm version $VERSION --no-git-tag-version
 
     - name: 🏗️ Build Electron app
@@ -224,7 +215,6 @@ EOF
       shell: bash
       working-directory: ./teleprompter
       run: |
-        # Find built files
         if [ -d "dist" ]; then
           find dist -name "*${{ matrix.ext }}" -o -name "*.tar.gz" -o -name "*.zip" | head -1 > artifact_path.txt
           if [ -s artifact_path.txt ]; then
