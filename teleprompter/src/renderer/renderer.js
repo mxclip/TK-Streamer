@@ -10,6 +10,7 @@ let currentBlockIndex = 0;
 let isAutoScrolling = false;
 let autoScrollInterval = null;
 let isOverlayMode = false;
+let wsHost = 'localhost:8000'; // Default WebSocket host
 
 // Script block types in order
 const blockTypes = ['hook', 'look', 'story', 'value', 'cta'];
@@ -43,8 +44,11 @@ document.addEventListener('DOMContentLoaded', async () => {
 
 async function loadSettings() {
     try {
-        const wsHost = await ipcRenderer.invoke('get-store-value', 'wsHost') || 'localhost:8000';
-        const savedBagId = await ipcRenderer.invoke('get-store-value', 'lastBagId');
+        // Use secure preload script to access settings
+        const wsConfig = await window.electronAPI.getWSConfig();
+        wsHost = wsConfig.host || 'localhost:8000';
+        
+        const savedBagId = await window.electronAPI.getStoreValue('lastBagId');
         
         if (savedBagId) {
             currentBagId = savedBagId;
@@ -57,18 +61,26 @@ async function loadSettings() {
 }
 
 function connectWebSocket() {
-    const wsUrl = 'ws://localhost:8000/ws/render';
+    // Close existing connection
+    if (websocket) {
+        websocket.close();
+    }
+    
+    // Use configurable WebSocket host
+    const wsUrl = `ws://${wsHost}/ws/render`;
+    console.log(`Connecting to WebSocket: ${wsUrl}`);
     
     try {
+        // Use built-in WebSocket API instead of requiring ws module
         websocket = new WebSocket(wsUrl);
         
         websocket.onopen = () => {
             console.log('WebSocket connected');
             updateConnectionStatus(true);
             
-            // Subscribe to current bag if available
+            // Subscribe to current bag if we have one
             if (currentBagId) {
-                subscribeToBag(currentBagId);
+                subscribe(currentBagId);
             }
         };
         
@@ -95,31 +107,29 @@ function connectWebSocket() {
         };
         
     } catch (error) {
-        console.error('Error creating WebSocket:', error);
+        console.error('Failed to create WebSocket connection:', error);
         updateConnectionStatus(false);
+        // Retry connection after 5 seconds
+        setTimeout(connectWebSocket, 5000);
     }
 }
 
 function handleWebSocketMessage(message) {
-    console.log('Received WebSocket message:', message);
+    console.log('WebSocket message received:', message);
     
     switch (message.type) {
         case 'scripts':
             handleScriptsMessage(message.data);
             break;
-            
         case 'switch':
             handleSwitchMessage(message.data);
             break;
-            
         case 'missing_product':
             handleMissingProductMessage(message.data);
             break;
-            
         case 'pong':
-            console.log('Received pong from server');
+            // Connection keepalive response
             break;
-            
         default:
             console.log('Unknown message type:', message.type);
     }
@@ -131,8 +141,8 @@ function handleScriptsMessage(data) {
     currentScriptIndex = 0;
     currentBlockIndex = 0;
     
-    // Save current bag ID
-    ipcRenderer.invoke('set-store-value', 'lastBagId', currentBagId);
+    // Save current bag ID using secure API
+    window.electronAPI.setStoreValue('lastBagId', currentBagId);
     
     // Update UI
     updateBagInfo();
@@ -144,25 +154,21 @@ function handleScriptsMessage(data) {
 
 function handleSwitchMessage(data) {
     console.log('Switching to bag:', data.bag_id);
-    // The scripts will be sent separately in a 'scripts' message
+    currentBagId = data.bag_id;
+    
+    // Save new bag ID
+    window.electronAPI.setStoreValue('lastBagId', currentBagId);
+    
+    // Subscribe to new bag
+    subscribe(currentBagId);
 }
 
 function handleMissingProductMessage(data) {
-    console.log('Missing product alert:', data.title);
-    showMissingBanner();
+    console.log('Missing product detected:', data);
+    showMissingBanner(data.title);
 }
 
-function updateConnectionStatus(connected) {
-    if (connected) {
-        connectionStatus.classList.add('connected');
-        statusText.textContent = 'Connected';
-    } else {
-        connectionStatus.classList.remove('connected');
-        statusText.textContent = 'Disconnected';
-    }
-}
-
-function subscribeToBag(bagId) {
+function subscribe(bagId) {
     if (websocket && websocket.readyState === WebSocket.OPEN) {
         const message = {
             type: 'subscribe',
@@ -173,119 +179,79 @@ function subscribeToBag(bagId) {
     }
 }
 
-function updateBagInfo() {
-    if (!currentBagId || scripts.length === 0) {
-        bagInfo.style.display = 'none';
-        return;
+function sendScriptUsed(scriptType, blockType) {
+    if (websocket && websocket.readyState === WebSocket.OPEN) {
+        const message = {
+            type: 'script_used',
+            data: {
+                bag_id: currentBagId,
+                script_type: scriptType,
+                block_type: blockType,
+                timestamp: Date.now()
+            }
+        };
+        websocket.send(JSON.stringify(message));
     }
-    
-    bagInfo.style.display = 'block';
-    bagTitle.textContent = `Bag #${currentBagId}`;
-    bagDetails.textContent = `${scripts.length} script variation(s) available`;
+}
+
+function updateConnectionStatus(connected) {
+    if (connected) {
+        connectionStatus.className = 'status-indicator connected';
+        statusText.textContent = 'Connected';
+    } else {
+        connectionStatus.className = 'status-indicator disconnected';
+        statusText.textContent = 'Disconnected';
+    }
+}
+
+function updateBagInfo() {
+    if (scripts.length > 0 && scripts[currentScriptIndex]) {
+        const script = scripts[currentScriptIndex];
+        bagTitle.textContent = script.bag_name || 'Unknown Bag';
+        bagDetails.textContent = `${script.bag_brand || ''} - ${script.bag_color || ''}`;
+        bagInfo.style.display = 'block';
+    } else {
+        bagInfo.style.display = 'none';
+    }
 }
 
 function renderCurrentScript() {
-    // Clear existing script blocks
-    const existingBlocks = scriptContainer.querySelectorAll('.script-block:not(#defaultBlock)');
-    existingBlocks.forEach(block => block.remove());
-    
-    // Hide default block
-    document.getElementById('defaultBlock').style.display = 'none';
-    
-    if (!scripts || scripts.length === 0) {
-        document.getElementById('defaultBlock').style.display = 'block';
-        updateNavigationInfo();
+    if (scripts.length === 0) {
+        scriptContainer.innerHTML = '<div class="no-script">No scripts available</div>';
+        blockInfo.textContent = '';
         return;
     }
     
-    const currentScript = scripts[currentScriptIndex];
-    if (!currentScript) {
-        console.error('No script at index:', currentScriptIndex);
-        return;
-    }
+    const script = scripts[currentScriptIndex];
+    const blockType = blockTypes[currentBlockIndex];
+    const content = script[blockType] || 'Content not available';
     
-    // Create blocks for each script type
-    blockTypes.forEach((blockType, index) => {
-        const content = currentScript[blockType];
-        if (content) {
-            const block = createScriptBlock(blockType, content, index === currentBlockIndex);
-            scriptContainer.appendChild(block);
-        }
-    });
+    scriptContainer.innerHTML = `<div class="script-content">${content}</div>`;
+    blockInfo.textContent = `${blockType.toUpperCase()} (${currentScriptIndex + 1}/${scripts.length}) - Block ${currentBlockIndex + 1}/${blockTypes.length}`;
     
-    updateNavigationInfo();
-}
-
-function createScriptBlock(type, content, isActive) {
-    const block = document.createElement('div');
-    block.className = `script-block ${isActive ? 'active' : ''}`;
-    block.setAttribute('data-type', type);
-    
-    block.innerHTML = `
-        <div class="script-type">${type.toUpperCase()}</div>
-        <div class="script-content">${content}</div>
-    `;
-    
-    return block;
-}
-
-function updateNavigationInfo() {
-    const blockName = blockTypes[currentBlockIndex] || '-';
-    const scriptNum = currentScriptIndex + 1;
-    const totalScripts = scripts.length;
-    
-    blockInfo.textContent = `Block: ${blockName.toUpperCase()} | Script: ${scriptNum} of ${totalScripts}`;
+    // Send analytics
+    sendScriptUsed('current', blockType);
 }
 
 function nextBlock() {
     if (scripts.length === 0) return;
     
-    const availableBlocks = getAvailableBlocks();
-    
-    if (currentBlockIndex < availableBlocks.length - 1) {
-        currentBlockIndex++;
-        showCurrentBlock();
-        
-        // Track script usage
-        trackScriptUsage();
-    }
+    currentBlockIndex = (currentBlockIndex + 1) % blockTypes.length;
+    renderCurrentScript();
 }
 
 function nextScript() {
     if (scripts.length === 0) return;
     
-    if (currentScriptIndex < scripts.length - 1) {
-        currentScriptIndex++;
-        currentBlockIndex = 0; // Reset to first block
-        renderCurrentScript();
-    }
+    currentScriptIndex = (currentScriptIndex + 1) % scripts.length;
+    renderCurrentScript();
 }
 
 function prevScript() {
     if (scripts.length === 0) return;
     
-    if (currentScriptIndex > 0) {
-        currentScriptIndex--;
-        currentBlockIndex = 0; // Reset to first block
-        renderCurrentScript();
-    }
-}
-
-function getAvailableBlocks() {
-    if (!scripts || scripts.length === 0) return [];
-    
-    const currentScript = scripts[currentScriptIndex];
-    return blockTypes.filter(type => currentScript[type]);
-}
-
-function showCurrentBlock() {
-    const blocks = scriptContainer.querySelectorAll('.script-block:not(#defaultBlock)');
-    
-    blocks.forEach((block, index) => {
-        block.classList.toggle('active', index === currentBlockIndex);
-    });
-    
-    updateNavigationInfo();
+    currentScriptIndex = currentScriptIndex === 0 ? scripts.length - 1 : currentScriptIndex - 1;
+    renderCurrentScript();
 }
 
 function toggleAutoScroll() {
@@ -297,25 +263,17 @@ function toggleAutoScroll() {
         stopAutoScroll();
     }
     
-    console.log('Auto-scroll:', isAutoScrolling ? 'enabled' : 'disabled');
+    updateAutoScrollUI();
 }
 
 function startAutoScroll() {
-    if (autoScrollInterval) {
-        clearInterval(autoScrollInterval);
-    }
+    stopAutoScroll(); // Clear any existing interval
     
-    // Auto-scroll at 60px per second as specified
     autoScrollInterval = setInterval(() => {
-        const activeBlock = scriptContainer.querySelector('.script-block.active');
-        if (activeBlock) {
-            const currentScroll = activeBlock.scrollTop;
-            activeBlock.scrollTop = currentScroll + 2; // 60px/s ≈ 2px per 33ms
+        if (scriptContainer.scrollTop < scriptContainer.scrollHeight - scriptContainer.clientHeight) {
+            scriptContainer.scrollTop += 2; // 60px/s at 30fps = 2px per frame
         }
-    }, 33);
-    
-    // Add CSS class for visual indication
-    document.body.classList.add('auto-scroll');
+    }, 33); // ~30fps
 }
 
 function stopAutoScroll() {
@@ -323,47 +281,29 @@ function stopAutoScroll() {
         clearInterval(autoScrollInterval);
         autoScrollInterval = null;
     }
-    
-    document.body.classList.remove('auto-scroll');
 }
 
-function trackScriptUsage() {
-    if (!scripts || !scripts[currentScriptIndex]) return;
-    
-    // Send usage tracking to backend
-    if (websocket && websocket.readyState === WebSocket.OPEN) {
-        const message = {
-            type: 'script_used',
-            data: {
-                script_id: scripts[currentScriptIndex].id,
-                block_type: blockTypes[currentBlockIndex]
-            }
-        };
-        websocket.send(JSON.stringify(message));
+function updateAutoScrollUI() {
+    const scrollIndicator = document.getElementById('scrollIndicator');
+    if (scrollIndicator) {
+        scrollIndicator.style.display = isAutoScrolling ? 'block' : 'none';
     }
 }
 
-function showMissingBanner() {
-    missingBanner.classList.add('show');
+function showMissingBanner(productTitle) {
+    const bannerText = document.getElementById('bannerText');
+    if (bannerText) {
+        bannerText.textContent = `⚠️ SCRIPT MISSING: ${productTitle}`;
+    }
+    
+    missingBanner.style.display = 'block';
     
     // Auto-hide after 10 seconds
-    setTimeout(() => {
-        hideMissingBanner();
-    }, 10000);
+    setTimeout(hideMissingBanner, 10000);
 }
 
 function hideMissingBanner() {
-    missingBanner.classList.remove('show');
-}
-
-async function toggleOverlay() {
-    isOverlayMode = await ipcRenderer.invoke('toggle-overlay');
-    updateOverlayUI();
-}
-
-function updateOverlayUI() {
-    document.body.classList.toggle('overlay-mode', isOverlayMode);
-    console.log('Overlay mode:', isOverlayMode ? 'enabled' : 'disabled');
+    missingBanner.style.display = 'none';
 }
 
 function showHelp() {
@@ -374,16 +314,40 @@ function hideHelp() {
     hotkeysHelp.classList.remove('show');
 }
 
+async function toggleOverlay() {
+    isOverlayMode = await window.electronAPI.toggleOverlay();
+    updateOverlayUI();
+}
+
+function updateOverlayUI() {
+    document.body.className = isOverlayMode ? 'overlay-mode' : '';
+}
+
+// Settings functions
+async function openSettings() {
+    const currentConfig = await window.electronAPI.getWSConfig();
+    const newHost = prompt('Enter WebSocket host (host:port):', currentConfig.host);
+    
+    if (newHost && newHost !== currentConfig.host) {
+        await window.electronAPI.setWSConfig({ host: newHost });
+        wsHost = newHost;
+        
+        // Reconnect to new host
+        connectWebSocket();
+    }
+}
+
 // Global functions for HTML buttons
 window.toggleAutoScroll = toggleAutoScroll;
 window.showHelp = showHelp;
 window.hideHelp = hideHelp;
 window.toggleOverlay = toggleOverlay;
+window.openSettings = openSettings;
 
-// IPC Setup
+// IPC Setup using secure preload script
 function setupIPC() {
     // Handle hotkeys from main process
-    ipcRenderer.on('hotkey', (event, action) => {
+    window.electronAPI.onHotkey((event, action) => {
         console.log('Hotkey received:', action);
         
         switch (action) {
@@ -403,23 +367,22 @@ function setupIPC() {
     });
     
     // Handle overlay mode changes
-    ipcRenderer.on('overlay-mode-changed', (event, enabled) => {
+    window.electronAPI.onOverlayModeChanged((event, enabled) => {
         isOverlayMode = enabled;
         updateOverlayUI();
     });
     
     // Handle menu actions
-    ipcRenderer.on('show-help', () => {
+    window.electronAPI.onShowHelp(() => {
         showHelp();
     });
     
-    ipcRenderer.on('show-about', () => {
+    window.electronAPI.onShowAbout(() => {
         alert('TikTok Teleprompter v1.0.0\n\nA real-time script display tool for luxury resale livestreams.');
     });
     
-    ipcRenderer.on('open-settings', () => {
-        // TODO: Implement settings dialog
-        console.log('Settings dialog requested');
+    window.electronAPI.onOpenSettings(() => {
+        openSettings();
     });
 }
 
@@ -430,38 +393,36 @@ document.addEventListener('keydown', (event) => {
         return;
     }
     
-    switch (event.code) {
-        case 'Space':
-            event.preventDefault();
-            nextBlock();
-            break;
-        case 'ArrowRight':
-            if (event.ctrlKey || event.metaKey) {
+    // Updated key combinations to match new shortcuts
+    if (event.ctrlKey && event.shiftKey) {
+        switch (event.code) {
+            case 'Space':
+                event.preventDefault();
+                nextBlock();
+                break;
+            case 'ArrowRight':
                 event.preventDefault();
                 nextScript();
-            }
-            break;
-        case 'ArrowLeft':
-            if (event.ctrlKey || event.metaKey) {
+                break;
+            case 'ArrowLeft':
                 event.preventDefault();
                 prevScript();
-            }
-            break;
-        case 'KeyR':
-            if ((event.ctrlKey || event.metaKey) && event.altKey) {
+                break;
+            case 'KeyR':
                 event.preventDefault();
                 toggleAutoScroll();
-            }
-            break;
-        case 'F11':
-            event.preventDefault();
-            toggleOverlay();
-            break;
-        case 'Escape':
-            if (hotkeysHelp.classList.contains('show')) {
-                hideHelp();
-            }
-            break;
+                break;
+            case 'F11':
+                event.preventDefault();
+                toggleOverlay();
+                break;
+        }
+    }
+    
+    if (event.code === 'Escape') {
+        if (hotkeysHelp.classList.contains('show')) {
+            hideHelp();
+        }
     }
 });
 
@@ -474,4 +435,4 @@ setInterval(() => {
         };
         websocket.send(JSON.stringify(message));
     }
-}, 30000); // Ping every 30 seconds 
+}, 30000); 

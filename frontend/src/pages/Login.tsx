@@ -32,7 +32,7 @@ const Login: React.FC = () => {
 
     try {
       await login(formData.email, formData.password);
-      navigate('/dashboard');
+      navigate('/'); // Navigate to dashboard (root path)
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Login failed');
     } finally {

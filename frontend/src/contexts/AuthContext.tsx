@@ -1,10 +1,9 @@
 import React, { createContext, useContext, useState, useEffect, ReactNode } from 'react';
 
-export interface User {
+interface User {
   id: number;
   email: string;
-  name: string;
-  role: 'admin' | 'streamer';
+  name?: string;
   is_active: boolean;
   is_superuser: boolean;
 }
@@ -28,6 +27,10 @@ interface AuthProviderProps {
   children: ReactNode;
 }
 
+// API Base URL - using full URL to avoid proxy issues
+// In production, this should be configured via environment variables
+const API_BASE_URL = 'http://localhost:8000/api/v1';
+
 export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
   const [authState, setAuthState] = useState<AuthState>({
     user: null,
@@ -49,7 +52,7 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
 
   const verifyToken = async (token: string) => {
     try {
-      const response = await fetch('/api/v1/auth/test-token', {
+      const response = await fetch(`${API_BASE_URL}/auth/test-token`, {
         method: 'POST',
         headers: {
           'Authorization': `Bearer ${token}`,
@@ -93,7 +96,7 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
       formData.append('username', email);
       formData.append('password', password);
 
-      const response = await fetch('/api/v1/auth/login/access-token', {
+      const response = await fetch(`${API_BASE_URL}/auth/login/access-token`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/x-www-form-urlencoded',

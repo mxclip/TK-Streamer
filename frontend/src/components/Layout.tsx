@@ -12,7 +12,6 @@ import {
   ListItemText,
   Toolbar,
   Typography,
-  Button,
   Avatar,
   Menu,
   MenuItem,
@@ -23,11 +22,12 @@ import {
   Dashboard,
   Inventory,
   Analytics,
-  Settings,
   Upload,
   LiveTv,
   AccountCircle,
   Logout,
+  Extension,
+  ErrorOutline,
 } from '@mui/icons-material';
 import { useNavigate, useLocation } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
@@ -64,12 +64,13 @@ const Layout: React.FC<LayoutProps> = ({ children }) => {
   };
 
   const menuItems = [
-    { text: 'Dashboard', icon: <Dashboard />, path: '/dashboard' },
+    { text: 'Dashboard', icon: <Dashboard />, path: '/' },
     { text: 'Bags Inventory', icon: <Inventory />, path: '/bags' },
     { text: 'Scripts', icon: <LiveTv />, path: '/scripts' },
+    { text: 'Phrase Mapping', icon: <Extension />, path: '/phrase-mapping' },
+    { text: 'CSV Import', icon: <Upload />, path: '/csv-import' },
+    { text: 'Missing Bags', icon: <ErrorOutline />, path: '/missing-bags' },
     { text: 'Analytics', icon: <Analytics />, path: '/analytics' },
-    { text: 'CSV Import', icon: <Upload />, path: '/import' },
-    { text: 'Settings', icon: <Settings />, path: '/settings' },
   ];
 
   const drawer = (
@@ -122,7 +123,7 @@ const Layout: React.FC<LayoutProps> = ({ children }) => {
           {user && (
             <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
               <Typography variant="body2" color="inherit">
-                {user.name}
+                {user.name || user.email}
               </Typography>
               <IconButton
                 size="large"
@@ -133,7 +134,7 @@ const Layout: React.FC<LayoutProps> = ({ children }) => {
                 color="inherit"
               >
                 <Avatar sx={{ width: 32, height: 32 }}>
-                  {user.name.charAt(0).toUpperCase()}
+                  {(user.name || user.email).charAt(0).toUpperCase()}
                 </Avatar>
               </IconButton>
             </Box>

@@ -10,7 +10,10 @@
     "electron:build": "npm run build && electron-builder",
     "build": "echo 'Build complete'",
     "start": "electron .",
-    "dev": "npm run electron:dev"
+    "dev": "npm run electron:dev",
+    "dist:linux": "electron-builder --linux",
+    "dist:win": "electron-builder --win",
+    "dist:mac": "electron-builder --mac"
   },
   "keywords": [
     "electron",
@@ -21,11 +24,10 @@
   "author": "TikTok Streamer Team",
   "license": "MIT",
   "devDependencies": {
-    "electron": "^27.0.0",
+    "electron": "^25.9.8",
     "electron-builder": "^24.6.4"
   },
   "dependencies": {
-    "ws": "^8.14.2",
     "electron-store": "^8.1.0"
   },
   "build": {
@@ -41,13 +43,29 @@
       "package.json"
     ],
     "mac": {
-      "category": "public.app-category.productivity"
+      "category": "public.app-category.productivity",
+      "target": [
+        {
+          "target": "dmg",
+          "arch": ["x64", "arm64"]
+        }
+      ]
     },
     "win": {
-      "target": "nsis"
+      "target": [
+        {
+          "target": "nsis",
+          "arch": ["x64", "ia32"]
+        }
+      ]
     },
     "linux": {
-      "target": "AppImage"
+      "target": [
+        {
+          "target": "AppImage",
+          "arch": ["x64"]
+        }
+      ]
     }
   }
 } 

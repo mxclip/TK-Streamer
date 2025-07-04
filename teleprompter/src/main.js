@@ -8,14 +8,15 @@ let mainWindow;
 let isOverlayMode = false;
 
 function createWindow() {
-  // Create the browser window with specified dimensions
+  // Create the browser window with secure configuration
   mainWindow = new BrowserWindow({
     width: 400,
     height: 600,
     webPreferences: {
-      nodeIntegration: true,
-      contextIsolation: false,
-      enableRemoteModule: true
+      nodeIntegration: false,        // Secure: disable node integration
+      contextIsolation: true,        // Secure: enable context isolation
+      enableRemoteModule: false,     // Secure: disable remote module
+      preload: path.join(__dirname, 'preload.js') // Use preload script for secure communication
     },
     frame: true,
     resizable: true,
@@ -45,38 +46,44 @@ function createWindow() {
 }
 
 function registerGlobalShortcuts() {
-  // Space - Next block
-  globalShortcut.register('Space', () => {
-    if (mainWindow) {
-      mainWindow.webContents.send('hotkey', 'next-block');
-    }
-  });
+  // Use less common key combinations to avoid conflicts
+  try {
+    // Ctrl+Shift+Space - Next block (instead of just Space)
+    globalShortcut.register('CommandOrControl+Shift+Space', () => {
+      if (mainWindow) {
+        mainWindow.webContents.send('hotkey', 'next-block');
+      }
+    });
 
-  // Ctrl+Right Arrow - Next script variation
-  globalShortcut.register('CommandOrControl+Right', () => {
-    if (mainWindow) {
-      mainWindow.webContents.send('hotkey', 'next-script');
-    }
-  });
+    // Ctrl+Shift+Right Arrow - Next script variation
+    globalShortcut.register('CommandOrControl+Shift+Right', () => {
+      if (mainWindow) {
+        mainWindow.webContents.send('hotkey', 'next-script');
+      }
+    });
 
-  // Ctrl+Left Arrow - Previous script variation
-  globalShortcut.register('CommandOrControl+Left', () => {
-    if (mainWindow) {
-      mainWindow.webContents.send('hotkey', 'prev-script');
-    }
-  });
+    // Ctrl+Shift+Left Arrow - Previous script variation
+    globalShortcut.register('CommandOrControl+Shift+Left', () => {
+      if (mainWindow) {
+        mainWindow.webContents.send('hotkey', 'prev-script');
+      }
+    });
 
-  // Ctrl+Alt+R - Toggle scroll mode
-  globalShortcut.register('CommandOrControl+Alt+R', () => {
-    if (mainWindow) {
-      mainWindow.webContents.send('hotkey', 'toggle-scroll');
-    }
-  });
+    // Ctrl+Shift+R - Toggle scroll mode
+    globalShortcut.register('CommandOrControl+Shift+R', () => {
+      if (mainWindow) {
+        mainWindow.webContents.send('hotkey', 'toggle-scroll');
+      }
+    });
 
-  // F11 - Toggle overlay mode
-  globalShortcut.register('F11', () => {
-    toggleOverlay();
-  });
+    // Ctrl+Shift+F11 - Toggle overlay mode (to avoid conflicts with browser F11)
+    globalShortcut.register('CommandOrControl+Shift+F11', () => {
+      toggleOverlay();
+    });
+  } catch (error) {
+    console.error('Failed to register global shortcuts:', error);
+    // Continue without global shortcuts if they fail to register
+  }
 }
 
 function toggleOverlay() {
@@ -134,9 +141,9 @@ function createMenu() {
       label: 'View',
       submenu: [
         {
-          label: 'Toggle Overlay (F11)',
+          label: 'Toggle Overlay (Ctrl+Shift+F11)',
           click: toggleOverlay,
-          accelerator: 'F11'
+          accelerator: 'CommandOrControl+Shift+F11'
         },
         { type: 'separator' },
         {
@@ -159,22 +166,22 @@ function createMenu() {
         {
           label: 'Next Block',
           click: () => mainWindow.webContents.send('hotkey', 'next-block'),
-          accelerator: 'Space'
+          accelerator: 'CommandOrControl+Shift+Space'
         },
         {
           label: 'Next Script',
           click: () => mainWindow.webContents.send('hotkey', 'next-script'),
-          accelerator: 'CommandOrControl+Right'
+          accelerator: 'CommandOrControl+Shift+Right'
         },
         {
           label: 'Previous Script',
           click: () => mainWindow.webContents.send('hotkey', 'prev-script'),
-          accelerator: 'CommandOrControl+Left'
+          accelerator: 'CommandOrControl+Shift+Left'
         },
         {
           label: 'Toggle Auto-Scroll',
           click: () => mainWindow.webContents.send('hotkey', 'toggle-scroll'),
-          accelerator: 'CommandOrControl+Alt+R'
+          accelerator: 'CommandOrControl+Shift+R'
         }
       ]
     },
@@ -201,7 +208,7 @@ function createMenu() {
   Menu.setApplicationMenu(menu);
 }
 
-// IPC handlers
+// IPC handlers for secure communication
 ipcMain.handle('get-store-value', (event, key) => {
   return store.get(key);
 });
@@ -217,6 +224,17 @@ ipcMain.handle('toggle-overlay', () => {
 
 ipcMain.handle('get-overlay-status', () => {
   return isOverlayMode;
+});
+
+// New IPC handlers for WebSocket configuration
+ipcMain.handle('get-ws-config', () => {
+  const host = store.get('wsHost', 'localhost:8000');
+  return { host };
+});
+
+ipcMain.handle('set-ws-config', (event, config) => {
+  store.set('wsHost', config.host);
+  return true;
 });
 
 // App event handlers
