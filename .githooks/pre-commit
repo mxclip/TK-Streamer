@@ -1,0 +1,28 @@
+#!/bin/bash
+# Pre-commit hook to validate YAML files in GitHub Actions workflows
+# This prevents YAML syntax errors from being committed
+
+echo "🔍 Running YAML validation..."
+
+# Check if Python is available
+if ! command -v python3 &> /dev/null; then
+    echo "❌ Python3 not found, skipping YAML validation"
+    exit 0
+fi
+
+# Check if PyYAML is available
+if ! python3 -c "import yaml" 2>/dev/null; then
+    echo "❌ PyYAML not found, skipping YAML validation"
+    echo "   Install with: pip install PyYAML"
+    exit 0
+fi
+
+# Run YAML validation
+if python3 validate_yaml.py; then
+    echo "✅ YAML validation passed"
+    exit 0
+else
+    echo "❌ YAML validation failed"
+    echo "   Fix YAML errors before committing"
+    exit 1
+fi 

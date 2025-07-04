@@ -418,6 +418,44 @@ cd frontend && npm start
 
 MIT License - 详见 [LICENSE](LICENSE) 文件
 
----
+## 🔧 **YAML 验证和错误预防**
+
+为防止 GitHub Actions 工作流程中的 YAML 语法错误，项目包含自动化验证工具：
+
+### **🔍 手动验证**
+```bash
+# 验证所有 GitHub Actions YAML 文件
+python3 validate_yaml.py
+```
+
+### **🪝 自动验证 (Git Hooks)**
+```bash
+# 设置 pre-commit hook (推荐)
+git config core.hooksPath .githooks
+
+# 现在每次提交都会自动验证 YAML 文件
+git commit -m "your changes"
+```
+
+### **📋 验证规则**
+- ✅ 所有 `.github/workflows/*.yml` 文件
+- ✅ YAML 语法正确性检查
+- ✅ 防止推送损坏的工作流程
+- ✅ 提交前自动验证
+
+### **🛠️ 故障排除**
+如果遇到 YAML 错误：
+```bash
+# 1. 运行验证脚本查看具体错误
+python3 validate_yaml.py
+
+# 2. 修复错误后重新验证
+python3 validate_yaml.py
+
+# 3. 确认所有文件通过验证后提交
+git add .
+git commit -m "Fix YAML syntax errors"
+git push origin main
+```
 
 🎉 **TikTok Streamer Helper** - 让您的奢侈品直播更加专业和高效！ 
