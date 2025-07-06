@@ -41,6 +41,7 @@ import {
   Verified,
   Warning,
 } from '@mui/icons-material';
+import { useAuth } from '../contexts/AuthContext';
 
 interface Bag {
   id: number;
@@ -56,6 +57,7 @@ interface Bag {
 }
 
 const Bags: React.FC = () => {
+  const { token } = useAuth();
   const [bags, setBags] = useState<Bag[]>([]);
   const [filteredBags, setFilteredBags] = useState<Bag[]>([]);
   const [loading, setLoading] = useState(true);
@@ -90,7 +92,12 @@ const Bags: React.FC = () => {
   const fetchBags = async () => {
     try {
       setLoading(true);
-      const response = await fetch('http://localhost:8000/api/v1/bags/');
+      const response = await fetch('http://localhost:8000/api/v1/bags', {
+        headers: {
+          'Authorization': `Bearer ${token}`,
+          'Content-Type': 'application/json',
+        },
+      });
       if (response.ok) {
         const data = await response.json();
         setBags(data);
@@ -181,6 +188,7 @@ const Bags: React.FC = () => {
       const response = await fetch(url, {
         method,
         headers: {
+          'Authorization': `Bearer ${token}`,
           'Content-Type': 'application/json',
         },
         body: JSON.stringify(bagData),
@@ -209,6 +217,10 @@ const Bags: React.FC = () => {
     try {
       const response = await fetch(`http://localhost:8000/api/v1/bags/${bagToDelete.id}`, {
         method: 'DELETE',
+        headers: {
+          'Authorization': `Bearer ${token}`,
+          'Content-Type': 'application/json',
+        },
       });
 
       if (response.ok) {

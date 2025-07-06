@@ -6,7 +6,7 @@ from fastapi.security import OAuth2PasswordRequestForm
 from sqlmodel import Session, select
 
 from app.core.config import settings
-from app.core.deps import get_db
+from app.core.deps import get_db, get_current_user
 from app.core.security import create_access_token, verify_password
 from app.models import Account
 
@@ -50,6 +50,23 @@ def login_access_token(
             "is_active": user.is_active,
             "is_superuser": user.is_superuser
         }
+    }
+
+
+@router.get("/me")
+def get_current_user_info(
+    current_user: Annotated[Account, Depends(get_current_user)]
+) -> dict:
+    """
+    Get current user information.
+    """
+    return {
+        "id": current_user.id,
+        "email": current_user.email,
+        "name": current_user.name,
+        "role": current_user.role,
+        "is_active": current_user.is_active,
+        "is_superuser": current_user.is_superuser
     }
 
 

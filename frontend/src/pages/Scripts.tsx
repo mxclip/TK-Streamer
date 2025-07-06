@@ -44,6 +44,7 @@ import {
   StarBorder,
   Star,
 } from '@mui/icons-material';
+import { useAuth } from '../contexts/AuthContext';
 
 interface Script {
   id: number;
@@ -58,6 +59,7 @@ interface Script {
 }
 
 const Scripts: React.FC = () => {
+  const { token } = useAuth();
   const [scripts, setScripts] = useState<Script[]>([]);
   const [filteredScripts, setFilteredScripts] = useState<Script[]>([]);
   const [loading, setLoading] = useState(true);
@@ -103,7 +105,12 @@ const Scripts: React.FC = () => {
   const fetchScripts = async () => {
     try {
       setLoading(true);
-      const response = await fetch('http://localhost:8000/api/v1/scripts/');
+      const response = await fetch('http://localhost:8000/api/v1/scripts', {
+        headers: {
+          'Authorization': `Bearer ${token}`,
+          'Content-Type': 'application/json',
+        },
+      });
       if (response.ok) {
         const data = await response.json();
         setScripts(data);
@@ -188,6 +195,7 @@ const Scripts: React.FC = () => {
       const response = await fetch(url, {
         method,
         headers: {
+          'Authorization': `Bearer ${token}`,
           'Content-Type': 'application/json',
         },
         body: JSON.stringify(scriptData),
@@ -216,6 +224,10 @@ const Scripts: React.FC = () => {
     try {
       const response = await fetch(`http://localhost:8000/api/v1/scripts/${scriptToDelete.id}`, {
         method: 'DELETE',
+        headers: {
+          'Authorization': `Bearer ${token}`,
+          'Content-Type': 'application/json',
+        },
       });
 
       if (response.ok) {
@@ -241,6 +253,7 @@ const Scripts: React.FC = () => {
       const response = await fetch(`http://localhost:8000/api/v1/scripts/${script.id}`, {
         method: 'PUT',
         headers: {
+          'Authorization': `Bearer ${token}`,
           'Content-Type': 'application/json',
         },
         body: JSON.stringify({

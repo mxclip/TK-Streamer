@@ -37,6 +37,7 @@ import {
   Share,
   ShoppingCart,
 } from '@mui/icons-material';
+import { useAuth } from '../contexts/AuthContext';
 
 interface AnalyticsData {
   overview: {
@@ -78,6 +79,7 @@ interface AnalyticsData {
 }
 
 const Analytics: React.FC = () => {
+  const { token } = useAuth();
   const [analyticsData, setAnalyticsData] = useState<AnalyticsData | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -90,7 +92,12 @@ const Analytics: React.FC = () => {
   const fetchAnalytics = async () => {
     try {
       setLoading(true);
-      const response = await fetch(`http://localhost:8000/api/v1/analytics?range=${dateRange}`);
+      const response = await fetch(`http://localhost:8000/api/v1/analytics?range=${dateRange}`, {
+        headers: {
+          'Authorization': `Bearer ${token}`,
+          'Content-Type': 'application/json',
+        },
+      });
       if (response.ok) {
         const data = await response.json();
         setAnalyticsData(data);

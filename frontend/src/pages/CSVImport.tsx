@@ -31,6 +31,7 @@ import {
 } from '@mui/icons-material';
 import { useDropzone } from 'react-dropzone';
 import * as XLSX from 'xlsx';
+import { useAuth } from '../contexts/AuthContext';
 
 interface CSVRow {
   name: string;
@@ -50,6 +51,7 @@ interface UploadResult {
 }
 
 const CSVImport: React.FC = () => {
+  const { token } = useAuth();
   const [csvData, setCsvData] = useState<CSVRow[]>([]);
   const [uploadResult, setUploadResult] = useState<UploadResult | null>(null);
   const [isUploading, setIsUploading] = useState(false);
@@ -154,6 +156,7 @@ const CSVImport: React.FC = () => {
       const response = await fetch('http://localhost:8000/api/v1/bags/import-csv', {
         method: 'POST',
         headers: {
+          'Authorization': `Bearer ${token}`,
           'Content-Type': 'application/json',
         },
         body: JSON.stringify({ bags: csvData }),

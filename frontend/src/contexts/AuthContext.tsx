@@ -52,8 +52,8 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
 
   const verifyToken = async (token: string) => {
     try {
-      const response = await fetch(`${API_BASE_URL}/auth/test-token`, {
-        method: 'POST',
+      const response = await fetch(`${API_BASE_URL}/auth/me`, {
+        method: 'GET',
         headers: {
           'Authorization': `Bearer ${token}`,
           'Content-Type': 'application/json',

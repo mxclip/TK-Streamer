@@ -28,6 +28,7 @@ import {
   MenuItem,
   FormControlLabel,
   Switch,
+  Snackbar,
 } from '@mui/material';
 import {
   Add,
@@ -38,6 +39,7 @@ import {
   Chat,
   Settings,
 } from '@mui/icons-material';
+import { useAuth } from '../contexts/AuthContext';
 
 interface PhraseMapping {
   id: number;
@@ -51,6 +53,7 @@ interface PhraseMapping {
 }
 
 const PhraseMapping: React.FC = () => {
+  const { token } = useAuth();
   const [phraseMappings, setPhraseMappings] = useState<PhraseMapping[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -58,6 +61,11 @@ const PhraseMapping: React.FC = () => {
   const [editingMapping, setEditingMapping] = useState<PhraseMapping | null>(null);
   const [deleteConfirmOpen, setDeleteConfirmOpen] = useState(false);
   const [mappingToDelete, setMappingToDelete] = useState<PhraseMapping | null>(null);
+  const [snackbar, setSnackbar] = useState<{ open: boolean; message: string; severity: 'success' | 'error' }>({
+    open: false,
+    message: '',
+    severity: 'success',
+  });
   
   const [formData, setFormData] = useState({
     trigger_phrase: '',
@@ -78,43 +86,23 @@ const PhraseMapping: React.FC = () => {
   const fetchPhraseMappings = async () => {
     try {
       setLoading(true);
-      // Mock data for demonstration
-      const mockData: PhraseMapping[] = [
-        {
-          id: 1,
-          trigger_phrase: 'what\'s the price',
-          response_text: 'The price for this item is shown on screen!',
-          action_type: 'highlight',
-          is_active: true,
-          category: 'pricing',
-          priority: 1,
-          usage_count: 25,
+      const response = await fetch('http://localhost:8000/api/v1/phrase-mappings', {
+        headers: {
+          'Authorization': `Bearer ${token}`,
+          'Content-Type': 'application/json',
         },
-        {
-          id: 2,
-          trigger_phrase: 'is this authentic',
-          response_text: 'Yes, all our items are authenticated by experts.',
-          action_type: 'response',
-          is_active: true,
-          category: 'authenticity',
-          priority: 1,
-          usage_count: 18,
-        },
-        {
-          id: 3,
-          trigger_phrase: 'any discount',
-          response_text: 'Use code LIVE10 for 10% off!',
-          action_type: 'discount',
-          is_active: true,
-          category: 'general',
-          priority: 2,
-          usage_count: 42,
-        },
-      ];
-      setPhraseMappings(mockData);
+      });
+
+      if (!response.ok) {
+        throw new Error('Failed to fetch phrase mappings');
+      }
+
+      const data = await response.json();
+      setPhraseMappings(data);
       setError(null);
     } catch (err) {
       setError('Failed to load phrase mappings');
+      console.error('Error fetching phrase mappings:', err);
     } finally {
       setLoading(false);
     }
@@ -150,10 +138,58 @@ const PhraseMapping: React.FC = () => {
     setEditingMapping(null);
   };
 
-  const handleSubmit = () => {
-    // In a real app, this would make an API call
-    console.log('Saving phrase mapping:', formData);
-    handleCloseDialog();
+  const handleSubmit = async () => {
+    try {
+      const url = editingMapping
+        ? `http://localhost:8000/api/v1/phrase-mappings/${editingMapping.id}`
+        : 'http://localhost:8000/api/v1/phrase-mappings';
+      
+      const method = editingMapping ? 'PUT' : 'POST';
+      
+      const response = await fetch(url, {
+        method,
+        headers: {
+          'Authorization': `Bearer ${token}`,
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify(formData),
+      });
+
+      if (!response.ok) {
+        throw new Error('Failed to save phrase mapping');
+      }
+
+      const data = await response.json();
+      
+      if (editingMapping) {
+        // Update existing mapping in state
+        setPhraseMappings(prev => 
+          prev.map(m => m.id === editingMapping.id ? data : m)
+        );
+        setSnackbar({
+          open: true,
+          message: 'Phrase mapping updated successfully',
+          severity: 'success',
+        });
+      } else {
+        // Add new mapping to state
+        setPhraseMappings(prev => [...prev, data]);
+        setSnackbar({
+          open: true,
+          message: 'Phrase mapping created successfully',
+          severity: 'success',
+        });
+      }
+      
+      handleCloseDialog();
+    } catch (err) {
+      console.error('Error saving phrase mapping:', err);
+      setSnackbar({
+        open: true,
+        message: 'Failed to save phrase mapping',
+        severity: 'error',
+      });
+    }
   };
 
   const handleDeleteClick = (mapping: PhraseMapping) => {
@@ -161,10 +197,41 @@ const PhraseMapping: React.FC = () => {
     setDeleteConfirmOpen(true);
   };
 
-  const handleDeleteConfirm = () => {
-    console.log('Deleting mapping:', mappingToDelete);
-    setDeleteConfirmOpen(false);
-    setMappingToDelete(null);
+  const handleDeleteConfirm = async () => {
+    if (!mappingToDelete) return;
+    
+    try {
+      const response = await fetch(`http://localhost:8000/api/v1/phrase-mappings/${mappingToDelete.id}`, {
+        method: 'DELETE',
+        headers: {
+          'Authorization': `Bearer ${token}`,
+          'Content-Type': 'application/json',
+        },
+      });
+
+      if (!response.ok) {
+        throw new Error('Failed to delete phrase mapping');
+      }
+
+      // Remove from state
+      setPhraseMappings(prev => prev.filter(m => m.id !== mappingToDelete.id));
+      
+      setSnackbar({
+        open: true,
+        message: 'Phrase mapping deleted successfully',
+        severity: 'success',
+      });
+    } catch (err) {
+      console.error('Error deleting phrase mapping:', err);
+      setSnackbar({
+        open: true,
+        message: 'Failed to delete phrase mapping',
+        severity: 'error',
+      });
+    } finally {
+      setDeleteConfirmOpen(false);
+      setMappingToDelete(null);
+    }
   };
 
   const getActionColor = (actionType: string) => {
@@ -449,6 +516,17 @@ const PhraseMapping: React.FC = () => {
           </Button>
         </DialogActions>
       </Dialog>
+
+      {/* Snackbar for notifications */}
+      <Snackbar
+        open={snackbar.open}
+        autoHideDuration={6000}
+        onClose={() => setSnackbar({ ...snackbar, open: false })}
+      >
+        <Alert onClose={() => setSnackbar({ ...snackbar, open: false })} severity={snackbar.severity}>
+          {snackbar.message}
+        </Alert>
+      </Snackbar>
     </Box>
   );
 };
