@@ -4,8 +4,9 @@ import logging
 
 from app.core.config import settings
 from app.core.db import create_db_and_tables
-from app.api.routes import auth, csv_upload, bags, phrase_map, match, feedback
+from app.api.routes import auth, csv_upload, bags, phrase_map, match, feedback, analytics, scripts, missing_bags, phrase_mappings
 from app.services.websocket_manager import websocket_endpoint
+from app.middleware.security import RateLimitMiddleware, InputValidationMiddleware
 
 # Configure logging
 logging.basicConfig(level=logging.INFO)
@@ -29,6 +30,10 @@ if settings.BACKEND_CORS_ORIGINS:
         allow_methods=["*"],
         allow_headers=["*"],
     )
+
+# Add security middleware
+app.add_middleware(RateLimitMiddleware, calls=100, period=60)  # 100 calls per minute
+app.add_middleware(InputValidationMiddleware)
 
 
 @app.on_event("startup")
@@ -103,6 +108,12 @@ app.include_router(
 )
 
 app.include_router(
+    phrase_mappings.router,
+    prefix=settings.API_V1_STR,
+    tags=["phrase-mappings-v2"]
+)
+
+app.include_router(
     match.router,
     prefix=settings.API_V1_STR,
     tags=["product-matching"]
@@ -112,6 +123,24 @@ app.include_router(
     feedback.router,
     prefix=settings.API_V1_STR,
     tags=["feedback-analytics"]
+)
+
+app.include_router(
+    analytics.router,
+    prefix=settings.API_V1_STR,
+    tags=["analytics"]
+)
+
+app.include_router(
+    scripts.router,
+    prefix=settings.API_V1_STR,
+    tags=["scripts"]
+)
+
+app.include_router(
+    missing_bags.router,
+    prefix=settings.API_V1_STR,
+    tags=["missing-bags"]
 )
 
 

@@ -45,7 +45,7 @@ class Settings(BaseSettings):
 
     BACKEND_CORS_ORIGINS: Annotated[
         list[AnyUrl] | str, BeforeValidator(parse_cors)
-    ] = []
+    ] = ["http://localhost:3000", "http://localhost:3001", "http://127.0.0.1:3000"]
 
     PROJECT_NAME: str = "TikTok Streamer Backend"
     SENTRY_DSN: str | None = None

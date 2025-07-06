@@ -2,11 +2,15 @@ from typing import Annotated, List, Optional
 
 from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlmodel import Session, select
+from pydantic import BaseModel
 
 from app.core.deps import get_db, get_current_admin_user, get_current_streamer_user, get_account_access_filter
 from app.models import Account, Bag, BagRead, BagCreateUser, Script, ScriptRead, ScriptCreate, ScriptType
 
 router = APIRouter()
+
+class BagImportRequest(BaseModel):
+    bags: List[dict]
 
 
 @router.post("/bags", response_model=BagRead)
@@ -177,6 +181,148 @@ def get_bag_details(
         "total_usage": sum(script.used_count for script in scripts),
         "total_likes": sum(script.like_count for script in scripts)
     }
+
+
+@router.post("/bags/import-csv")
+def import_bags_csv(
+    request: BagImportRequest,
+    session: Annotated[Session, Depends(get_db)],
+    current_user: Annotated[Account, Depends(get_current_streamer_user)]
+) -> dict:
+    """
+    Import multiple bags from CSV/Excel data.
+    Frontend sends array of bag objects after parsing CSV/Excel file.
+    """
+    imported_count = 0
+    errors = []
+    
+    for idx, bag_data in enumerate(request.bags):
+        try:
+            # Map frontend field 'name' to backend field 'model'
+            bag = Bag(
+                brand=bag_data.get('brand', '').strip(),
+                model=bag_data.get('name', '').strip(),  # Map 'name' to 'model'
+                color=bag_data.get('color', '').strip(),
+                condition=bag_data.get('condition', 'good').strip().lower(),
+                details=bag_data.get('details', '').strip(),
+                price=float(bag_data.get('price', 0)) if bag_data.get('price') else None,
+                authenticity_verified=str(bag_data.get('authenticity_verified', '')).lower() == 'true',
+                account_id=current_user.id
+            )
+            
+            # Validate required fields
+            if not bag.brand or not bag.model:
+                errors.append(f"Row {idx + 1}: Missing required fields (brand and name)")
+                continue
+            
+            # Validate condition
+            valid_conditions = ['excellent', 'very good', 'good', 'fair']
+            if bag.condition not in valid_conditions:
+                bag.condition = 'good'  # Default to 'good' if invalid
+            
+            session.add(bag)
+            imported_count += 1
+            
+            # Auto-generate basic scripts for the imported bag
+            script_templates = [
+                (ScriptType.hook, f"Check out this amazing {bag.brand} {bag.model}!"),
+                (ScriptType.look, f"Look at this beautiful {bag.color} color!"),
+                (ScriptType.story, f"This {bag.brand} piece represents timeless luxury."),
+                (ScriptType.value, f"Exceptional value in {bag.condition} condition!"),
+                (ScriptType.cta, "Don't miss out - grab it now!")
+            ]
+            
+            for script_type, content in script_templates:
+                script = Script(
+                    content=content,
+                    script_type=script_type,
+                    bag_id=bag.id
+                )
+                session.add(script)
+                
+        except Exception as e:
+            errors.append(f"Row {idx + 1}: {str(e)}")
+            continue
+    
+    # Commit all valid bags
+    if imported_count > 0:
+        session.commit()
+    
+    return {
+        "imported_count": imported_count,
+        "total_rows": len(request.bags),
+        "errors": errors,
+        "success": imported_count > 0,
+        "message": f"Successfully imported {imported_count} bags" if imported_count > 0 else "No bags imported"
+    }
+
+
+@router.put("/bags/{bag_id}", response_model=BagRead)
+def update_bag(
+    bag_id: int,
+    bag_data: BagCreateUser,
+    session: Annotated[Session, Depends(get_db)],
+    current_user: Annotated[Account, Depends(get_current_streamer_user)],
+    account_filter: Annotated[Optional[int], Depends(get_account_access_filter)]
+) -> BagRead:
+    """
+    Update an existing bag.
+    """
+    # Get the bag with access control
+    bag_stmt = select(Bag).where(Bag.id == bag_id)
+    if account_filter is not None:
+        bag_stmt = bag_stmt.where(Bag.account_id == account_filter)
+    
+    bag = session.exec(bag_stmt).first()
+    if not bag:
+        raise HTTPException(status_code=404, detail="Bag not found")
+    
+    # Update fields
+    bag.brand = bag_data.brand
+    bag.model = bag_data.name  # Map 'name' to 'model'
+    bag.color = bag_data.color
+    bag.condition = bag_data.condition
+    bag.details = bag_data.details
+    bag.price = bag_data.price
+    bag.authenticity_verified = bag_data.authenticity_verified
+    
+    session.add(bag)
+    session.commit()
+    session.refresh(bag)
+    
+    return bag
+
+
+@router.delete("/bags/{bag_id}")
+def delete_bag(
+    bag_id: int,
+    session: Annotated[Session, Depends(get_db)],
+    current_user: Annotated[Account, Depends(get_current_admin_user)],
+    account_filter: Annotated[Optional[int], Depends(get_account_access_filter)]
+) -> dict:
+    """
+    Delete a bag and all associated scripts.
+    """
+    # Get the bag with access control
+    bag_stmt = select(Bag).where(Bag.id == bag_id)
+    if account_filter is not None:
+        bag_stmt = bag_stmt.where(Bag.account_id == account_filter)
+    
+    bag = session.exec(bag_stmt).first()
+    if not bag:
+        raise HTTPException(status_code=404, detail="Bag not found")
+    
+    # Delete associated scripts first
+    scripts_stmt = select(Script).where(Script.bag_id == bag_id)
+    scripts = session.exec(scripts_stmt).all()
+    for script in scripts:
+        session.delete(script)
+    
+    # Delete the bag
+    session.delete(bag)
+    session.commit()
+    
+    return {"message": "Bag and associated scripts deleted successfully"}
 
 
 @router.get("/bags/stats")
