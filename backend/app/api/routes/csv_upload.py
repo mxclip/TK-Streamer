@@ -1,119 +1,99 @@
 from typing import Annotated
+import pandas as pd
+import io
 
-from fastapi import APIRouter, Depends, File, Form, HTTPException, UploadFile, status
+from fastapi import APIRouter, Depends, File, HTTPException, UploadFile, status
+from fastapi.responses import StreamingResponse
 from sqlmodel import Session
 
-from app.core.deps import get_db, get_current_admin_user, get_account_access_filter
-from app.models import Account
-from app.services.csv_import import import_csv, generate_template_csv, CSVImportError
+from app.core.deps import get_db, get_current_user
+from app.models import Account, Bag
+from app.services.csv_import import import_bags_csv, generate_template_excel
 
 router = APIRouter()
 
 
-@router.post("/upload/csv")
-async def upload_csv(
+@router.post("/bags/import-csv")
+async def import_bags_csv_endpoint(
     session: Annotated[Session, Depends(get_db)],
-    current_user: Annotated[Account, Depends(get_current_admin_user)],
-    template: Annotated[str, Form()],
+    current_user: Annotated[Account, Depends(get_current_user)],
     file: UploadFile = File(...)
 ) -> dict:
     """
-    Upload and process CSV file for bags and scripts.
-    
-    Query Parameters:
-    - template: 'a' for scripts only, 'b' for bags + scripts
-    
-    Template A (scripts only): bag_id,script_text
-    Template B (bags + scripts): bag_id,brand,model,color,condition,hook_text,look_text,story_text,value_text,cta_text
+    Import bags from CSV or Excel file.
+    Required columns: name, brand, price, details, conditions
     """
-    if template.lower() not in ["a", "b"]:
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail="Template must be 'a' or 'b'"
-        )
-    
     if not file.filename:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail="No file uploaded"
         )
     
-    if not file.filename.endswith('.csv'):
+    # Check file extension
+    file_ext = file.filename.lower().split('.')[-1]
+    if file_ext not in ['csv', 'xlsx', 'xls']:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
-            detail="File must be a CSV"
+            detail="File must be CSV or Excel format"
         )
     
     try:
-        # Read CSV content
+        # Read file content
         contents = await file.read()
-        csv_content = contents.decode('utf-8')
         
-        # Process CSV
-        result = import_csv(csv_content, template, current_user.id, session)
+        # Parse file based on extension
+        if file_ext == 'csv':
+            df = pd.read_csv(io.BytesIO(contents))
+        else:  # Excel
+            df = pd.read_excel(io.BytesIO(contents))
+        
+        # Process the import
+        result = import_bags_csv(df, current_user.id, session)
         
         return {
-            "message": "CSV imported successfully",
+            "message": "Import completed successfully",
             "filename": file.filename,
-            "template": template.upper(),
-            "result": result
+            "total_rows": result["total_rows"],
+            "successful": result["successful"],
+            "failed": result["failed"],
+            "errors": result["errors"]
         }
         
-    except CSVImportError as e:
+    except pd.errors.EmptyDataError:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
-            detail=str(e)
-        )
-    except UnicodeDecodeError:
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail="Invalid CSV encoding. Please use UTF-8."
+            detail="The file is empty"
         )
     except Exception as e:
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=f"Error processing CSV: {str(e)}"
+            detail=f"Error processing file: {str(e)}"
         )
+
+
+@router.get("/bags/template")
+def download_template() -> StreamingResponse:
+    """
+    Download the CSV/Excel template for bag import.
+    """
+    # Generate Excel template
+    excel_buffer = generate_template_excel()
+    
+    return StreamingResponse(
+        io.BytesIO(excel_buffer),
+        media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        headers={
+            "Content-Disposition": "attachment; filename=bag_import_template.xlsx"
+        }
+    )
 
 
 @router.get("/upload/csv/template/{template}")
-def get_csv_template(template: str) -> dict:
+def get_csv_template_legacy(template: str) -> dict:
     """
-    Get sample CSV template for the specified format.
-    
-    Path Parameters:
-    - template: 'a' for scripts only, 'b' for bags + scripts
+    Legacy endpoint - redirects to new template
     """
-    if template.lower() not in ["a", "b"]:
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail="Template must be 'a' or 'b'"
-        )
-    
-    try:
-        sample_csv = generate_template_csv(template)
-        
-        return {
-            "template": template.upper(),
-            "description": (
-                "Template A: Add scripts to existing bags" if template.lower() == "a"
-                else "Template B: Create/update bags with scripts"
-            ),
-            "headers": (
-                "bag_id,script_text" if template.lower() == "a"
-                else "bag_id,brand,model,color,condition,hook_text,look_text,story_text,value_text,cta_text"
-            ),
-            "sample_csv": sample_csv.strip(),
-            "usage_notes": [
-                "All text will be processed through phrase mapping rules",
-                "Empty script fields will be skipped",
-                "Existing records will be updated (UPSERT pattern)",
-                "Warnings will be generated for potential Chinglish terms"
-            ]
-        }
-        
-    except CSVImportError as e:
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail=str(e)
-        ) 
+    return {
+        "message": "This endpoint is deprecated. Please use /api/v1/bags/template",
+        "new_endpoint": "/api/v1/bags/template"
+    } 

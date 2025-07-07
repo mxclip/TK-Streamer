@@ -180,19 +180,6 @@ async function notifyMatch(result) {
 // Notify content script of no match
 async function notifyNoMatch(productTitle) {
   try {
-    // Report missing product to backend
-    await fetch(`${CONFIG.apiBaseUrl}/missing-bags`, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json'
-      },
-      body: JSON.stringify({
-        product_title: productTitle,
-        source_url: 'extension',
-        timestamp: new Date().toISOString()
-      })
-    });
-    
     const tabs = await chrome.tabs.query({ 
       url: ['https://*.tiktok.com/*', 'https://seller.tiktok.com/*', 'https://studio.tiktok.com/*'] 
     });

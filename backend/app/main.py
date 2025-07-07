@@ -4,7 +4,7 @@ import logging
 
 from app.core.config import settings
 from app.core.db import create_db_and_tables
-from app.api.routes import auth, csv_upload, bags, phrase_map, match, feedback, analytics, scripts, missing_bags, phrase_mappings
+from app.api.routes import auth, csv_upload, bags, phrase_map, match, feedback, analytics, scripts, phrase_mappings
 from app.services.websocket_manager import websocket_endpoint
 from app.middleware.security import RateLimitMiddleware, InputValidationMiddleware
 
@@ -137,11 +137,7 @@ app.include_router(
     tags=["scripts"]
 )
 
-app.include_router(
-    missing_bags.router,
-    prefix=settings.API_V1_STR,
-    tags=["missing-bags"]
-)
+
 
 
 # Additional endpoints for extension integration
@@ -153,7 +149,6 @@ def get_api_status():
         "websocket_url": f"ws://{settings.WS_HOST}/ws/render",
         "endpoints": {
             "match": f"{settings.API_V1_STR}/match",
-            "missing_bags": f"{settings.API_V1_STR}/missing-bags",
             "feedback": f"{settings.API_V1_STR}/feedback"
         },
         "features": {

@@ -1,277 +1,166 @@
-import csv
+import pandas as pd
 import io
-from typing import List, Dict, Any
+from typing import Dict, Any, List
 from sqlmodel import Session, select
 from datetime import datetime
 
-from app.models import Bag, Script, ScriptType, BagCreate, ScriptCreate
-from app.services.phrase_mapper import apply_phrase_map_to_script_content
+from app.models import Bag, BagCreate
 
 
 class CSVImportError(Exception):
     pass
 
 
-def validate_template_a_headers(headers: List[str]) -> bool:
-    """Validate Template A CSV headers: bag_id,script_text"""
-    required_headers = ["bag_id", "script_text"]
-    return all(header.strip().lower() in [h.lower() for h in headers] for header in required_headers)
-
-
-def validate_template_b_headers(headers: List[str]) -> bool:
-    """Validate Template B CSV headers: bag_id,brand,model,color,condition,hook_text,look_text,story_text,value_text,cta_text"""
-    required_headers = [
-        "bag_id", "brand", "model", "color", "condition",
-        "hook_text", "look_text", "story_text", "value_text", "cta_text"
-    ]
-    return all(header.strip().lower() in [h.lower() for h in headers] for header in required_headers)
-
-
-def process_template_a_csv(
-    csv_content: str, 
-    account_id: int, 
+def import_bags_csv(
+    df: pd.DataFrame,
+    account_id: int,
     session: Session
 ) -> Dict[str, Any]:
     """
-    Process Template A CSV: bag_id,script_text
-    Adds scripts to existing bags.
+    Import bags from a DataFrame with columns: name, brand, price, details, conditions
     """
-    csv_reader = csv.DictReader(io.StringIO(csv_content))
-    headers = [h.strip() for h in csv_reader.fieldnames] if csv_reader.fieldnames else []
+    # Validate required columns
+    required_columns = ['name', 'brand', 'price', 'details', 'conditions']
+    missing_columns = [col for col in required_columns if col not in df.columns]
     
-    if not validate_template_a_headers(headers):
-        raise CSVImportError("Invalid Template A headers. Expected: bag_id,script_text")
+    if missing_columns:
+        raise CSVImportError(f"Missing required columns: {', '.join(missing_columns)}")
     
-    processed_rows = 0
+    # Initialize counters and lists
+    total_rows = len(df)
+    successful = 0
+    failed = 0
     errors = []
-    warnings = []
-    created_scripts = []
     
-    for row_num, row in enumerate(csv_reader, start=2):  # Start at 2 for header row
+    # Process each row
+    for idx, row in df.iterrows():
         try:
-            bag_id = int(row["bag_id"].strip())
-            script_text = row["script_text"].strip()
+            # Clean and validate data
+            name = str(row['name']).strip() if pd.notna(row['name']) else ''
+            brand = str(row['brand']).strip() if pd.notna(row['brand']) else ''
+            price = float(row['price']) if pd.notna(row['price']) else 0.0
+            details = str(row['details']).strip() if pd.notna(row['details']) else ''
+            conditions = str(row['conditions']).strip() if pd.notna(row['conditions']) else 'Good'
             
-            if not script_text:
-                errors.append(f"Row {row_num}: script_text cannot be empty")
+            # Validate required fields
+            if not name:
+                errors.append(f"Row {idx + 2}: Name is required")
+                failed += 1
+                continue
+                
+            if not brand:
+                errors.append(f"Row {idx + 2}: Brand is required")
+                failed += 1
                 continue
             
-            # Verify bag exists and belongs to account
-            bag_statement = select(Bag).where(
-                Bag.id == bag_id,
-                Bag.account_id == account_id
-            )
-            bag = session.exec(bag_statement).first()
-            
-            if not bag:
-                errors.append(f"Row {row_num}: Bag {bag_id} not found or not accessible")
-                continue
-            
-            # Apply phrase mapping
-            processed_text, phrase_warnings = apply_phrase_map_to_script_content(
-                script_text, "hook", account_id, session  # Default to hook type
-            )
-            warnings.extend([f"Row {row_num}: {w}" for w in phrase_warnings])
-            
-            # Create script
-            script = Script(
-                bag_id=bag_id,
-                content=processed_text,
-                script_type=ScriptType.hook,  # Default type for Template A
+            # Create bag object
+            # Note: 'model' field in database is populated with 'name' value
+            bag = Bag(
+                brand=brand,
+                model=name,  # Using 'name' for the model field
+                color="N/A",  # Default color as it's not in the new format
+                condition=conditions,
+                details=details,
+                price=price,
+                authenticity_verified=False,  # Default value
+                account_id=account_id,
                 created_at=datetime.utcnow(),
                 updated_at=datetime.utcnow()
             )
             
-            session.add(script)
-            created_scripts.append(script)
-            processed_rows += 1
+            session.add(bag)
+            successful += 1
             
         except ValueError as e:
-            errors.append(f"Row {row_num}: Invalid bag_id - must be a number")
+            errors.append(f"Row {idx + 2}: Invalid price value - {str(e)}")
+            failed += 1
         except Exception as e:
-            errors.append(f"Row {row_num}: {str(e)}")
+            errors.append(f"Row {idx + 2}: {str(e)}")
+            failed += 1
     
-    if not errors:
-        session.commit()
-    else:
-        session.rollback()
-        raise CSVImportError(f"CSV import failed with {len(errors)} errors: {'; '.join(errors[:5])}")
-    
-    return {
-        "template": "A",
-        "processed_rows": processed_rows,
-        "created_scripts": len(created_scripts),
-        "created_bags": 0,
-        "warnings": warnings,
-        "errors": errors
-    }
-
-
-def process_template_b_csv(
-    csv_content: str, 
-    account_id: int, 
-    session: Session
-) -> Dict[str, Any]:
-    """
-    Process Template B CSV: bag_id,brand,model,color,condition,hook_text,look_text,story_text,value_text,cta_text
-    Creates or updates bags and their scripts.
-    """
-    csv_reader = csv.DictReader(io.StringIO(csv_content))
-    headers = [h.strip() for h in csv_reader.fieldnames] if csv_reader.fieldnames else []
-    
-    if not validate_template_b_headers(headers):
-        raise CSVImportError(
-            "Invalid Template B headers. Expected: bag_id,brand,model,color,condition,hook_text,look_text,story_text,value_text,cta_text"
-        )
-    
-    processed_rows = 0
-    errors = []
-    warnings = []
-    created_bags = []
-    created_scripts = []
-    bag_cache = {}  # Cache bags to avoid duplicate database hits
-    
-    for row_num, row in enumerate(csv_reader, start=2):
+    # Commit if there were successful imports
+    if successful > 0:
         try:
-            bag_id = int(row["bag_id"].strip())
-            brand = row["brand"].strip()
-            model = row["model"].strip()
-            color = row["color"].strip()
-            condition = row["condition"].strip()
-            
-            # Validate required bag fields
-            if not all([brand, model, color, condition]):
-                errors.append(f"Row {row_num}: All bag fields (brand, model, color, condition) are required")
-                continue
-            
-            # Get or create bag using UPSERT pattern
-            if bag_id not in bag_cache:
-                bag_statement = select(Bag).where(Bag.id == bag_id)
-                existing_bag = session.exec(bag_statement).first()
-                
-                if existing_bag:
-                    # Update existing bag
-                    existing_bag.brand = brand
-                    existing_bag.model = model
-                    existing_bag.color = color
-                    existing_bag.condition = condition
-                    existing_bag.updated_at = datetime.utcnow()
-                    bag_cache[bag_id] = existing_bag
-                else:
-                    # Create new bag
-                    new_bag = Bag(
-                        id=bag_id,
-                        brand=brand,
-                        model=model,
-                        color=color,
-                        condition=condition,
-                        account_id=account_id,
-                        created_at=datetime.utcnow(),
-                        updated_at=datetime.utcnow()
-                    )
-                    session.add(new_bag)
-                    bag_cache[bag_id] = new_bag
-                    created_bags.append(new_bag)
-            
-            # Process each script type
-            script_types = [
-                ("hook_text", ScriptType.hook),
-                ("look_text", ScriptType.look),
-                ("story_text", ScriptType.story),
-                ("value_text", ScriptType.value),
-                ("cta_text", ScriptType.cta)
-            ]
-            
-            for field_name, script_type in script_types:
-                script_content = row[field_name].strip()
-                
-                if script_content:  # Only create script if content exists
-                    # Apply phrase mapping
-                    processed_content, phrase_warnings = apply_phrase_map_to_script_content(
-                        script_content, script_type.value, account_id, session
-                    )
-                    warnings.extend([f"Row {row_num} ({script_type.value}): {w}" for w in phrase_warnings])
-                    
-                    # Check if script already exists (for upsert)
-                    existing_script_statement = select(Script).where(
-                        Script.bag_id == bag_id,
-                        Script.script_type == script_type
-                    )
-                    existing_script = session.exec(existing_script_statement).first()
-                    
-                    if existing_script:
-                        # Update existing script
-                        existing_script.content = processed_content
-                        existing_script.updated_at = datetime.utcnow()
-                    else:
-                        # Create new script
-                        new_script = Script(
-                            bag_id=bag_id,
-                            content=processed_content,
-                            script_type=script_type,
-                            created_at=datetime.utcnow(),
-                            updated_at=datetime.utcnow()
-                        )
-                        session.add(new_script)
-                        created_scripts.append(new_script)
-            
-            processed_rows += 1
-            
-        except ValueError as e:
-            errors.append(f"Row {row_num}: Invalid bag_id - must be a number")
+            session.commit()
         except Exception as e:
-            errors.append(f"Row {row_num}: {str(e)}")
-    
-    if not errors:
-        session.commit()
-    else:
-        session.rollback()
-        raise CSVImportError(f"CSV import failed with {len(errors)} errors: {'; '.join(errors[:5])}")
+            session.rollback()
+            raise CSVImportError(f"Database error: {str(e)}")
     
     return {
-        "template": "B",
-        "processed_rows": processed_rows,
-        "created_scripts": len(created_scripts),
-        "created_bags": len(created_bags),
-        "warnings": warnings,
-        "errors": errors
+        "total_rows": total_rows,
+        "successful": successful,
+        "failed": failed,
+        "errors": errors[:10]  # Limit errors to first 10
     }
 
 
-def import_csv(
-    csv_content: str, 
-    template: str, 
-    account_id: int, 
-    session: Session
-) -> Dict[str, Any]:
+def generate_template_excel() -> bytes:
     """
-    Main CSV import function that routes to appropriate template processor.
+    Generate an Excel template with sample data
     """
-    if not csv_content.strip():
-        raise CSVImportError("CSV content cannot be empty")
+    # Create sample data
+    sample_data = {
+        'name': ['Classic Flap Medium', 'Birkin 30', 'Lady Dior Medium'],
+        'brand': ['Chanel', 'Hermès', 'Dior'],
+        'price': [7500.00, 15000.00, 5500.00],
+        'details': [
+            'Quilted caviar leather, gold hardware, excellent condition',
+            'Togo leather, palladium hardware, includes box and dust bag',
+            'Cannage lambskin, silver hardware, limited edition'
+        ],
+        'conditions': ['Excellent', 'Like New', 'Very Good']
+    }
     
-    if template.lower() == "a":
-        return process_template_a_csv(csv_content, account_id, session)
-    elif template.lower() == "b":
-        return process_template_b_csv(csv_content, account_id, session)
-    else:
-        raise CSVImportError("Invalid template. Must be 'a' or 'b'")
+    # Create DataFrame
+    df = pd.DataFrame(sample_data)
+    
+    # Write to Excel buffer
+    buffer = io.BytesIO()
+    with pd.ExcelWriter(buffer, engine='openpyxl') as writer:
+        df.to_excel(writer, sheet_name='Bags Import', index=False)
+        
+        # Get the worksheet
+        worksheet = writer.sheets['Bags Import']
+        
+        # Adjust column widths
+        column_widths = {'A': 25, 'B': 15, 'C': 10, 'D': 50, 'E': 15}
+        for col, width in column_widths.items():
+            worksheet.column_dimensions[col].width = width
+        
+        # Add header formatting
+        for cell in worksheet[1]:
+            cell.font = cell.font.copy(bold=True)
+    
+    buffer.seek(0)
+    return buffer.getvalue()
+
+
+# Keep old functions for backward compatibility but mark as deprecated
+def validate_template_a_headers(headers: List[str]) -> bool:
+    """DEPRECATED - Use new import format"""
+    return False
+
+
+def validate_template_b_headers(headers: List[str]) -> bool:
+    """DEPRECATED - Use new import format"""
+    return False
+
+
+def process_template_a_csv(csv_content: str, account_id: int, session: Session) -> Dict[str, Any]:
+    """DEPRECATED - Use new import format"""
+    raise CSVImportError("Template A is deprecated. Please use the new import format.")
+
+
+def process_template_b_csv(csv_content: str, account_id: int, session: Session) -> Dict[str, Any]:
+    """DEPRECATED - Use new import format"""
+    raise CSVImportError("Template B is deprecated. Please use the new import format.")
+
+
+def import_csv(csv_content: str, template: str, account_id: int, session: Session) -> Dict[str, Any]:
+    """DEPRECATED - Use import_bags_csv instead"""
+    raise CSVImportError("This function is deprecated. Please use the new import format.")
 
 
 def generate_template_csv(template: str) -> str:
-    """
-    Generate sample CSV content for the specified template.
-    """
-    if template.lower() == "a":
-        return """bag_id,script_text
-101,"NYC girls, LOOK 💥 This vintage Chanel is calling your name!"
-101,"Ladies, can you handle this HEAT? 🔥 Authentic luxury at unbeatable prices!"
-102,"Stop everything! This Hermès piece just dropped and it's PERFECTION ✨"
-"""
-    elif template.lower() == "b":
-        return """bag_id,brand,model,color,condition,hook_text,look_text,story_text,value_text,cta_text
-101,Chanel,Classic Flap,Black,Excellent,"NYC girls, LOOK 💥","Pebbled canvas with signature quilting","Found in a Paris estate sale","Retail $8000, yours for $4500","DM me NOW - first come first served!"
-102,Hermès,Birkin,Orange,New,"Stop everything!","Authentic Hermès craftsmanship","Direct from authorized dealer","Investment piece - only appreciates","Link in bio - payment plans available!"
-"""
-    else:
-        raise CSVImportError("Invalid template. Must be 'a' or 'b'") 
+    """DEPRECATED - Use generate_template_excel instead"""
+    return "name,brand,price,details,conditions\nClassic Flap,Chanel,7500,Excellent condition,Excellent" 

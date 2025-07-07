@@ -177,22 +177,6 @@ class PhraseMapUpdate(SQLModel):
     active: Optional[bool] = None
 
 
-# MissingBag model - Track unmatched product titles
-class MissingBagBase(SQLModel):
-    raw_title: str = Field(max_length=500)
-    first_seen: datetime = Field(default_factory=datetime.utcnow)
-
-
-class MissingBag(MissingBagBase, table=True):
-    id: Optional[int] = Field(default=None, primary_key=True)
-    resolved: bool = Field(default=False)
-    created_at: datetime = Field(default_factory=datetime.utcnow)
-
-
-class MissingBagRead(MissingBagBase):
-    id: int
-    resolved: bool
-    created_at: datetime
 
 
 # Feedback model - Live feedback for script effectiveness

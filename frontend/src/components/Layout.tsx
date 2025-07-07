@@ -27,7 +27,6 @@ import {
   AccountCircle,
   Logout,
   Extension,
-  ErrorOutline,
 } from '@mui/icons-material';
 import { useNavigate, useLocation } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
@@ -69,7 +68,7 @@ const Layout: React.FC<LayoutProps> = ({ children }) => {
     { text: 'Scripts', icon: <LiveTv />, path: '/scripts' },
     { text: 'Phrase Mapping', icon: <Extension />, path: '/phrase-mapping' },
     { text: 'CSV Import', icon: <Upload />, path: '/csv-import' },
-    { text: 'Missing Bags', icon: <ErrorOutline />, path: '/missing-bags' },
+  
     { text: 'Analytics', icon: <Analytics />, path: '/analytics' },
   ];
 

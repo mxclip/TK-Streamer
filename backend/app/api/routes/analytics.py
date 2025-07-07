@@ -2,7 +2,7 @@ from typing import Annotated, Optional
 from datetime import datetime, timedelta
 from fastapi import APIRouter, Depends, Query
 from sqlmodel import Session, select, func
-from app.core.deps import get_db, get_current_admin_user, get_account_access_filter
+from app.core.deps import get_db, get_current_user
 from app.models import Account, Bag, Script, Feedback
 import json
 
@@ -11,9 +11,8 @@ router = APIRouter()
 @router.get("/analytics")
 def get_analytics(
     session: Annotated[Session, Depends(get_db)],
-    current_user: Annotated[Account, Depends(get_current_admin_user)],
-    account_filter: Annotated[Optional[int], Depends(get_account_access_filter)],
-    range: str = Query("30d", description="Date range: 7d, 30d, 90d, 1y")
+    current_user: Annotated[Account, Depends(get_current_user)],
+    date_range: str = Query("30d", description="Date range: 7d, 30d, 90d, 1y")
 ) -> dict:
     """
     Get comprehensive analytics data for the dashboard.
@@ -21,25 +20,19 @@ def get_analytics(
     """
     # Parse date range
     days_map = {"7d": 7, "30d": 30, "90d": 90, "1y": 365}
-    days = days_map.get(range, 30)
+    days = days_map.get(date_range, 30)
     start_date = datetime.utcnow() - timedelta(days=days)
     
-    # Get bags with filters
-    bags_stmt = select(Bag)
-    if account_filter is not None:
-        bags_stmt = bags_stmt.where(Bag.account_id == account_filter)
+    # Get bags for current user
+    bags_stmt = select(Bag).where(Bag.account_id == current_user.id)
     bags = session.exec(bags_stmt).all()
     
     # Get scripts
-    scripts_stmt = select(Script).join(Bag)
-    if account_filter is not None:
-        scripts_stmt = scripts_stmt.where(Bag.account_id == account_filter)
+    scripts_stmt = select(Script).join(Bag).where(Bag.account_id == current_user.id)
     scripts = session.exec(scripts_stmt).all()
     
     # Get feedback
-    feedback_stmt = select(Feedback).join(Script).join(Bag)
-    if account_filter is not None:
-        feedback_stmt = feedback_stmt.where(Bag.account_id == account_filter)
+    feedback_stmt = select(Feedback).join(Script).join(Bag).where(Bag.account_id == current_user.id)
     feedback_stmt = feedback_stmt.where(Feedback.created_at >= start_date)
     feedbacks = session.exec(feedback_stmt).all()
     
@@ -136,16 +129,13 @@ def get_analytics(
 @router.get("/analytics/performance")
 def get_performance_metrics(
     session: Annotated[Session, Depends(get_db)],
-    current_user: Annotated[Account, Depends(get_current_admin_user)],
-    account_filter: Annotated[Optional[int], Depends(get_account_access_filter)]
+    current_user: Annotated[Account, Depends(get_current_user)]
 ) -> dict:
     """
     Get detailed performance metrics for scripts and bags.
     """
     # Get scripts with their bags
-    scripts_stmt = select(Script).join(Bag)
-    if account_filter is not None:
-        scripts_stmt = scripts_stmt.where(Bag.account_id == account_filter)
+    scripts_stmt = select(Script).join(Bag).where(Bag.account_id == current_user.id)
     scripts = session.exec(scripts_stmt).all()
     
     # Calculate metrics by script type
@@ -182,14 +172,29 @@ def get_performance_metrics(
 @router.get("/analytics/export")
 def export_analytics(
     session: Annotated[Session, Depends(get_db)],
-    current_user: Annotated[Account, Depends(get_current_admin_user)],
-    format: str = Query("json", description="Export format: json or csv")
+    current_user: Annotated[Account, Depends(get_current_user)],
+    format: str = Query("json", description="Export format: json or csv"),
+    date_range: str = Query("30d", description="Date range: 7d, 30d, 90d, 1y")
 ) -> dict:
     """
     Export analytics data in various formats.
     """
-    # Get all analytics data
-    analytics_data = get_analytics(session, current_user, None, "30d")
+    # Get analytics data by calling the logic directly
+    days_map = {"7d": 7, "30d": 30, "90d": 90, "1y": 365}
+    days = days_map.get(date_range, 30)
+    start_date = datetime.utcnow() - timedelta(days=days)
+    
+    # Get data for current user
+    bags_stmt = select(Bag).where(Bag.account_id == current_user.id)
+    bags = session.exec(bags_stmt).all()
+    
+    analytics_data = {
+        "overview": {
+            "total_bags": len(bags),
+            "total_revenue": sum(bag.price or 0 for bag in bags),
+            "date_range": date_range
+        }
+    }
     
     if format == "csv":
         # In a real implementation, this would return a CSV file

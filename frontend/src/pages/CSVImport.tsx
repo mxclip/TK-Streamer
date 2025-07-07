@@ -36,17 +36,16 @@ import { useAuth } from '../contexts/AuthContext';
 interface CSVRow {
   name: string;
   brand: string;
-  color: string;
-  details: string;
   price: string;
-  condition: string;
-  authenticity_verified: string;
+  details: string;
+  conditions: string;
 }
 
 interface UploadResult {
   success: boolean;
   message: string;
-  imported_count?: number;
+  successful?: number;
+  failed?: number;
   errors?: string[];
 }
 
@@ -101,11 +100,9 @@ const CSVImport: React.FC = () => {
             data.push({
               name: values[0] || '',
               brand: values[1] || '',
-              color: values[2] || '',
+              price: values[2] || '',
               details: values[3] || '',
-              price: values[4] || '',
-              condition: values[5] || '',
-              authenticity_verified: values[6] || '',
+              conditions: values[4] || '',
             });
           }
         }
@@ -130,13 +127,11 @@ const CSVImport: React.FC = () => {
           const row = jsonData[i];
           if (row && row.length > 0 && row[0]) { // Skip empty rows
             parsedData.push({
-              name: row[0] || '',
-              brand: row[1] || '',
-              color: row[2] || '',
-              details: row[3] || '',
-              price: row[4] || '',
-              condition: row[5] || '',
-              authenticity_verified: row[6] || '',
+              name: row[0]?.toString() || '',
+              brand: row[1]?.toString() || '',
+              price: row[2]?.toString() || '',
+              details: row[3]?.toString() || '',
+              conditions: row[4]?.toString() || '',
             });
           }
         }
@@ -147,19 +142,21 @@ const CSVImport: React.FC = () => {
   };
 
   const handleUpload = async () => {
-    if (!csvData.length) return;
+    if (!selectedFile) return;
 
     setIsUploading(true);
     setUploadResult(null);
 
     try {
+      const formData = new FormData();
+      formData.append('file', selectedFile);
+
       const response = await fetch('http://localhost:8000/api/v1/bags/import-csv', {
         method: 'POST',
         headers: {
           'Authorization': `Bearer ${token}`,
-          'Content-Type': 'application/json',
         },
-        body: JSON.stringify({ bags: csvData }),
+        body: formData,
       });
 
       const result = await response.json();
@@ -167,8 +164,9 @@ const CSVImport: React.FC = () => {
       if (response.ok) {
         setUploadResult({
           success: true,
-          message: `Successfully imported ${result.imported_count || csvData.length} items`,
-          imported_count: result.imported_count || csvData.length,
+          message: result.message || `Successfully imported ${result.successful} items`,
+          successful: result.successful,
+          failed: result.failed,
         });
         setCsvData([]);
         setSelectedFile(null);
@@ -189,28 +187,25 @@ const CSVImport: React.FC = () => {
     }
   };
 
-  const downloadTemplate = (format: 'csv' | 'excel' = 'excel') => {
-    const template = [
-      ['name', 'brand', 'color', 'details', 'price', 'condition', 'authenticity_verified'],
-      ['Hermès Birkin 35', 'Hermès', 'Black', 'Togo leather with gold hardware', '12000', 'excellent', 'true'],
-      ['Chanel Classic Flap', 'Chanel', 'Navy', 'Quilted lambskin with silver chain', '8500', 'very good', 'true'],
-      ['Louis Vuitton Neverfull', 'Louis Vuitton', 'Brown', 'Monogram canvas with leather trim', '1200', 'good', 'true'],
-    ];
-    
-    if (format === 'excel') {
-      const worksheet = XLSX.utils.aoa_to_sheet(template);
-      const workbook = XLSX.utils.book_new();
-      XLSX.utils.book_append_sheet(workbook, worksheet, 'Bags Template');
-      XLSX.writeFile(workbook, 'bags_template.xlsx');
-    } else {
-      const csvContent = template.map(row => row.join(',')).join('\n');
-      const blob = new Blob([csvContent], { type: 'text/csv' });
-      const url = window.URL.createObjectURL(blob);
-      const a = document.createElement('a');
-      a.href = url;
-      a.download = 'bags_template.csv';
-      a.click();
-      window.URL.revokeObjectURL(url);
+  const downloadTemplate = async () => {
+    try {
+      const response = await fetch('http://localhost:8000/api/v1/bags/template', {
+        headers: {
+          'Authorization': `Bearer ${token}`,
+        },
+      });
+      
+      if (response.ok) {
+        const blob = await response.blob();
+        const url = window.URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = 'bag_import_template.xlsx';
+        a.click();
+        window.URL.revokeObjectURL(url);
+      }
+    } catch (error) {
+      console.error('Error downloading template:', error);
     }
   };
 
@@ -263,9 +258,9 @@ const CSVImport: React.FC = () => {
         <Button
           variant="outlined"
           startIcon={<Download />}
-          onClick={() => downloadTemplate('excel')}
+          onClick={downloadTemplate}
         >
-          Download Template (Excel)
+          Download Template
         </Button>
         {csvData.length > 0 && (
           <>
@@ -317,6 +312,11 @@ const CSVImport: React.FC = () => {
           }
         >
           {uploadResult.message}
+          {uploadResult.successful !== undefined && uploadResult.failed !== undefined && (
+            <Typography variant="body2" sx={{ mt: 1 }}>
+              Successful: {uploadResult.successful}, Failed: {uploadResult.failed}
+            </Typography>
+          )}
           {uploadResult.errors && uploadResult.errors.length > 0 && (
             <Box component="ul" sx={{ mt: 1, mb: 0 }}>
               {uploadResult.errors.map((error, index) => (
@@ -336,10 +336,18 @@ const CSVImport: React.FC = () => {
             Your CSV or Excel file should have the following columns in order:
           </Typography>
           <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 1 }}>
-            {['name', 'brand', 'color', 'details', 'price', 'condition', 'authenticity_verified'].map((column) => (
+            {['name', 'brand', 'price', 'details', 'conditions'].map((column) => (
               <Chip key={column} label={column} variant="outlined" size="small" />
             ))}
           </Box>
+          <Typography variant="body2" color="text.secondary" sx={{ mt: 2 }}>
+            <strong>Example:</strong><br />
+            name: Classic Flap Medium<br />
+            brand: Chanel<br />
+            price: 7500<br />
+            details: Quilted caviar leather, gold hardware<br />
+            conditions: Excellent
+          </Typography>
         </CardContent>
       </Card>
 
@@ -352,10 +360,9 @@ const CSVImport: React.FC = () => {
                 <TableRow>
                   <TableCell>Name</TableCell>
                   <TableCell>Brand</TableCell>
-                  <TableCell>Color</TableCell>
                   <TableCell>Price</TableCell>
-                  <TableCell>Condition</TableCell>
-                  <TableCell>Verified</TableCell>
+                  <TableCell>Details</TableCell>
+                  <TableCell>Conditions</TableCell>
                 </TableRow>
               </TableHead>
               <TableBody>
@@ -363,13 +370,12 @@ const CSVImport: React.FC = () => {
                   <TableRow key={index}>
                     <TableCell>{row.name}</TableCell>
                     <TableCell>{row.brand}</TableCell>
-                    <TableCell>{row.color}</TableCell>
                     <TableCell>${row.price}</TableCell>
-                    <TableCell>{row.condition}</TableCell>
+                    <TableCell>{row.details}</TableCell>
                     <TableCell>
                       <Chip 
-                        label={row.authenticity_verified === 'true' ? 'Yes' : 'No'}
-                        color={row.authenticity_verified === 'true' ? 'success' : 'warning'}
+                        label={row.conditions}
+                        color="primary"
                         size="small"
                       />
                     </TableCell>

@@ -41,13 +41,7 @@ const Dashboard: React.FC = () => {
       color: '#f57c00',
       path: '/analytics',
     },
-    {
-      title: 'Missing Items',
-      value: '2',
-      icon: <Analytics sx={{ fontSize: 40 }} />,
-      color: '#d32f2f',
-      path: '/missing-bags',
-    },
+
   ];
 
   return (
@@ -134,8 +128,6 @@ const Dashboard: React.FC = () => {
               • 3 bags imported successfully
               <br />
               • 15 scripts generated
-              <br />
-              • 2 missing products detected
               <br />
               • System ready for livestreaming
             </Typography>

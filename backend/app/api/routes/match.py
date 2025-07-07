@@ -5,7 +5,7 @@ from rapidfuzz import fuzz, process
 from sqlmodel import Session, select
 
 from app.core.deps import get_db
-from app.models import Bag, MissingBag
+from app.models import Bag
 from app.services.websocket_manager import send_switch_command, send_missing_product_alert
 
 router = APIRouter()
@@ -90,18 +90,8 @@ async def match_product_title(
         }
     
     else:
-        # No match found - log as missing and send alert
-        missing_statement = select(MissingBag).where(MissingBag.raw_title == title)
-        existing_missing = session.exec(missing_statement).first()
-        
-        if not existing_missing:
-            # Create new missing bag record
-            missing_bag = MissingBag(raw_title=title, resolved=False)
-            session.add(missing_bag)
-            session.commit()
-            
-            # Send missing product alert to teleprompter
-            await send_missing_product_alert(title)
+        # No match found - send alert
+        await send_missing_product_alert(title)
         
         raise HTTPException(
             status_code=404, 
@@ -183,64 +173,4 @@ def get_similar_bags(
     }
 
 
-@router.get("/missing-bags")
-def get_missing_bags(
-    session: Session = Depends(get_db),
-    skip: int = Query(0, ge=0),
-    limit: int = Query(50, ge=1, le=100),
-    resolved: Optional[bool] = Query(None, description="Filter by resolved status")
-) -> dict:
-    """
-    Get list of missing bags (unmatched product titles).
-    """
-    statement = select(MissingBag)
-    
-    if resolved is not None:
-        statement = statement.where(MissingBag.resolved == resolved)
-    
-    statement = statement.offset(skip).limit(limit).order_by(MissingBag.first_seen.desc())
-    
-    missing_bags = session.exec(statement).all()
-    
-    # Get total count
-    count_statement = select(MissingBag)
-    if resolved is not None:
-        count_statement = count_statement.where(MissingBag.resolved == resolved)
-    total_count = len(session.exec(count_statement).all())
-    
-    return {
-        "missing_bags": [
-            {
-                "id": mb.id,
-                "raw_title": mb.raw_title,
-                "first_seen": mb.first_seen,
-                "resolved": mb.resolved,
-                "created_at": mb.created_at
-            }
-            for mb in missing_bags
-        ],
-        "total_count": total_count,
-        "skip": skip,
-        "limit": limit
-    }
-
-
-@router.post("/missing-bags/{missing_bag_id}/resolve")
-def resolve_missing_bag(
-    missing_bag_id: int,
-    session: Session = Depends(get_db)
-) -> dict:
-    """
-    Mark a missing bag as resolved.
-    """
-    statement = select(MissingBag).where(MissingBag.id == missing_bag_id)
-    missing_bag = session.exec(statement).first()
-    
-    if not missing_bag:
-        raise HTTPException(status_code=404, detail="Missing bag not found")
-    
-    missing_bag.resolved = True
-    session.add(missing_bag)
-    session.commit()
-    
-    return {"message": "Missing bag marked as resolved"} 
+ 

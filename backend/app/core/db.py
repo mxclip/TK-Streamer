@@ -6,7 +6,7 @@ engine = create_engine(str(settings.SQLALCHEMY_DATABASE_URI))
 
 
 def create_db_and_tables():
-    from app.models import Account, Bag, Script, PhraseMap, MissingBag, Feedback
+    from app.models import Account, Bag, Script, PhraseMap, Feedback
     from sqlmodel import SQLModel
     SQLModel.metadata.create_all(engine)
 

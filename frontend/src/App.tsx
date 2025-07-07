@@ -15,7 +15,7 @@ import Scripts from './pages/Scripts';
 import PhraseMapping from './pages/PhraseMapping';
 import Analytics from './pages/Analytics';
 import CSVImport from './pages/CSVImport';
-import MissingBags from './pages/MissingBags';
+
 
 const queryClient = new QueryClient({
   defaultOptions: {
@@ -77,7 +77,7 @@ function AppRoutes() {
                 <Route path="/scripts" element={<Scripts />} />
                 <Route path="/phrase-mapping" element={<PhraseMapping />} />
                 <Route path="/csv-import" element={<CSVImport />} />
-                <Route path="/missing-bags" element={<MissingBags />} />
+      
                 <Route path="/analytics" element={<Analytics />} />
               </Routes>
             </Layout>
